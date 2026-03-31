@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>FloriBot Web Teleop</title>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+      background: #fff;
+      font-family: sans-serif;
+    }
+
+    .page {
+      height: 100%;
+      width: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 12px;
+      padding: 14px;
+      box-sizing: border-box;
+    }
+
+    .top { display: grid; gap: 6px; }
+
+    .title {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .status {
+      margin: 0;
+      font-size: 14px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      width: fit-content;
+    }
+
+    .status.ok {
+      background: #c8f7c5;
+      color: #1b5e20;
+    }
+
+    .status.err {
+      background: #f8c7c7;
+      color: #7f0000;
+    }
+
+    .out code {
+      background: #f6f6f6;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+
+    .controls {
+      display: grid;
+      align-items: center;
+      justify-items: center;
+    }
+
+    .joystick {
+      width: min(86vw, 420px);
+      aspect-ratio: 1 / 1;
+      border-radius: 999px;
+      border: 2px solid #bbb;
+      background: radial-gradient(circle at 30% 30%, #fafafa, #eaeaea);
+      position: relative;
+      touch-action: none;
+    }
+
+    .stick {
+      width: 34%;
+      height: 34%;
+      border-radius: 999px;
+      border: 2px solid #888;
+      background: radial-gradient(circle at 30% 30%, #ffffff, #dcdcdc);
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .center-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #888;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      opacity: 0.7;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="top">
+      <p class="title">Web Teleop</p>
+      <p class="status err" id="wsStatus">WebSocket: nicht verbunden</p>
+      <p class="status out">Sende: <code id="out">v=0.00 m/s, w=0.00 rad/s</code></p>
+    </div>
+
+    <div class="controls">
+      <div class="joystick" id="joystick">
+        <div class="center-dot"></div>
+        <div class="stick" id="stick"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
+  document.addEventListener("gesturechange", e => e.preventDefault(), { passive: false });
+  document.addEventListener("gestureend", e => e.preventDefault(), { passive: false });
+
+  // ---------- WebSocket ----------
+  const wsStatus = document.getElementById("wsStatus");
+  const outEl = document.getElementById("out");
+
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => {
+    wsStatus.textContent = "WebSocket: verbunden";
+    wsStatus.classList.remove("err");
+    wsStatus.classList.add("ok");
+  };
+  ws.onclose = () => {
+    wsStatus.textContent = "WebSocket: nicht verbunden";
+    wsStatus.classList.remove("ok");
+    wsStatus.classList.add("err");
+  };
+
+  function send(v, w) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ v, w }));
+    }
+  }
+
+  /* === Maximalwerte (bewusst > 1 m/s) === */
+  const V_MAX = 3.0;   // m/s
+  const W_MAX = 6.0;   // rad/s
+
+  /* === Spin-only Fenster === */
+  const SPIN_WINDOW_DEG = 30.0;
+  const SPIN_WINDOW_RAD = SPIN_WINDOW_DEG * Math.PI / 180.0;
+
+  function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+  function angleRad(x, y) { return Math.atan2(y, x); }
+  function absAngleDiff(a, b) {
+    let d = a - b;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    return Math.abs(d);
+  }
+
+  const joy = document.getElementById("joystick");
+  const stick = document.getElementById("stick");
+
+  let active = false;
+  let pointerId = null;
+  let jx = 0.0, jy = 0.0;
+
+  function setStick(nx, ny) {
+    const m = joy.getBoundingClientRect().width * 0.275;
+    stick.style.transform =
+      `translate(${nx * m}px, ${-ny * m}px) translate(-50%, -50%)`;
+  }
+
+  function updateFromPointer(x, y) {
+    const r = joy.getBoundingClientRect();
+    let dx = x - (r.left + r.width / 2);
+    let dy = y - (r.top + r.height / 2);
+    const m = r.width * 0.275;
+    const d = Math.hypot(dx, dy);
+    if (d > m && d > 0) {
+      dx *= m / d;
+      dy *= m / d;
+    }
+    jx = clamp(dx / m, -1, 1);
+    jy = clamp(-dy / m, -1, 1);
+    setStick(jx, jy);
+  }
+
+  function stop() {
+    active = false;
+    jx = jy = 0;
+    setStick(0, 0);
+    send(0, 0);
+    outEl.textContent = `v=0.00 m/s, w=0.00 rad/s`;
+  }
+
+  joy.addEventListener("pointerdown", e => {
+    active = true;
+    pointerId = e.pointerId;
+    joy.setPointerCapture(pointerId);
+    updateFromPointer(e.clientX, e.clientY);
+  });
+
+  joy.addEventListener("pointermove", e => {
+    if (active && e.pointerId === pointerId)
+      updateFromPointer(e.clientX, e.clientY);
+  });
+
+  joy.addEventListener("pointerup", stop);
+  joy.addEventListener("pointercancel", stop);
+  joy.addEventListener("lostpointercapture", stop);
+
+  /* ---------- Control loop ---------- */
+  setInterval(() => {
+    if (!active) return;
+
+    let v = clamp(jy * V_MAX, -V_MAX, V_MAX);
+
+    const steerSign = (jy >= 0) ? 1 : -1;
+    let w = clamp((-jx * W_MAX) * steerSign, -W_MAX, W_MAX);
+
+    const a = angleRad(jx, jy);
+    if (
+      absAngleDiff(a, 0) <= SPIN_WINDOW_RAD ||
+      absAngleDiff(a, Math.PI) <= SPIN_WINDOW_RAD
+    ) {
+      v = 0.0;
+    }
+
+    send(v, w);
+    outEl.textContent = `v=${v.toFixed(2)} m/s, w=${w.toFixed(2)} rad/s`;
+  }, 50);
+</script>
+</body>
+</html>
