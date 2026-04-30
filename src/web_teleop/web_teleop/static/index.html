@@ -6,6 +6,12 @@
   <title>FloriBot Web Teleop</title>
 
   <style>
+    :root {
+      --pad-radius: 84px;
+      --stick-radius: 34px;
+      --max-vector-length: 50px;
+    }
+
     html, body {
       height: 100%;
       margin: 0;
@@ -16,8 +22,8 @@
       -webkit-touch-callout: none;
       -webkit-tap-highlight-color: transparent;
       touch-action: none;
-      background: #fff;
-      font-family: sans-serif;
+      background: #f7f7f7;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
     .page {
@@ -26,15 +32,30 @@
       display: grid;
       grid-template-rows: auto 1fr;
       gap: 12px;
-      padding: 14px;
+      padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
       box-sizing: border-box;
     }
 
-    .top { display: grid; gap: 6px; }
+    .top {
+      display: grid;
+      gap: 10px;
+      background: white;
+      border-radius: 14px;
+      padding: 12px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+      z-index: 5;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
 
     .title {
       font-size: 18px;
-      font-weight: 600;
+      font-weight: 650;
       margin: 0;
     }
 
@@ -42,8 +63,9 @@
       margin: 0;
       font-size: 14px;
       padding: 4px 8px;
-      border-radius: 6px;
+      border-radius: 8px;
       width: fit-content;
+      white-space: nowrap;
     }
 
     .status.ok {
@@ -57,66 +79,124 @@
     }
 
     .out code {
-      background: #f6f6f6;
+      background: #f0f0f0;
       padding: 2px 6px;
       border-radius: 6px;
     }
 
-    .controls {
+    .slider-row {
       display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
       align-items: center;
-      justify-items: center;
     }
 
-    .joystick {
-      width: min(86vw, 420px);
-      aspect-ratio: 1 / 1;
-      border-radius: 999px;
-      border: 2px solid #bbb;
-      background: radial-gradient(circle at 30% 30%, #fafafa, #eaeaea);
+    .slider-label {
+      grid-column: 1 / -1;
+      font-size: 14px;
+      color: #333;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      touch-action: pan-x;
+    }
+
+    .slider-value {
+      min-width: 72px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 14px;
+    }
+
+    .control-area {
       position: relative;
+      min-height: 0;
+      border-radius: 18px;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,0.035) 1px, transparent 1px),
+        linear-gradient(rgba(0,0,0,0.035) 1px, transparent 1px),
+        #ffffff;
+      background-size: 28px 28px;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
       touch-action: none;
     }
 
-    .stick {
-      width: 34%;
-      height: 34%;
-      border-radius: 999px;
-      border: 2px solid #888;
-      background: radial-gradient(circle at 30% 30%, #ffffff, #dcdcdc);
+    .hint {
       position: absolute;
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
+      color: #777;
+      font-size: 15px;
+      text-align: center;
       pointer-events: none;
     }
 
-    .center-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: #888;
+    .joystick {
+      position: absolute;
+      width: calc(2 * var(--pad-radius));
+      height: calc(2 * var(--pad-radius));
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95), rgba(210,210,210,0.88));
+      border: 2px solid rgba(80, 80, 80, 0.35);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+      display: none;
+      pointer-events: none;
+    }
+
+    .joystick.active { display: block; }
+
+    .stick {
       position: absolute;
       left: 50%;
       top: 50%;
+      width: calc(2 * var(--stick-radius));
+      height: calc(2 * var(--stick-radius));
+      border-radius: 50%;
       transform: translate(-50%, -50%);
-      opacity: 0.7;
-      pointer-events: none;
+      background: radial-gradient(circle at 35% 35%, #ffffff, #d7d7d7);
+      border: 2px solid rgba(50, 50, 50, 0.45);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
     }
+
+    .crosshair::before,
+    .crosshair::after {
+      content: "";
+      position: absolute;
+      background: rgba(0, 0, 0, 0.16);
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .crosshair::before { width: 1px; height: 76%; }
+    .crosshair::after { width: 76%; height: 1px; }
   </style>
 </head>
 
 <body>
   <div class="page">
     <div class="top">
-      <p class="title">Web Teleop</p>
-      <p class="status err" id="wsStatus">WebSocket: nicht verbunden</p>
+      <div class="title-row">
+        <p class="title">Web Teleop</p>
+        <p class="status err" id="wsStatus">WebSocket: nicht verbunden</p>
+      </div>
+
+      <div class="slider-row">
+        <label class="slider-label" for="vMaxSlider">Maximale lineare Geschwindigkeit</label>
+        <input id="vMaxSlider" type="range" min="0.05" max="3.00" step="0.05" value="0.25" />
+        <span class="slider-value" id="vMaxValue">0.25 m/s</span>
+      </div>
+
       <p class="status out">Sende: <code id="out">v=0.00 m/s, w=0.00 rad/s</code></p>
     </div>
 
-    <div class="controls">
-      <div class="joystick" id="joystick">
-        <div class="center-dot"></div>
+    <div class="control-area" id="controlArea">
+      <div class="hint">Finger aufsetzen und ziehen</div>
+      <div class="joystick crosshair" id="joystick">
         <div class="stick" id="stick"></div>
       </div>
     </div>
@@ -127,117 +207,216 @@
   document.addEventListener("gesturechange", e => e.preventDefault(), { passive: false });
   document.addEventListener("gestureend", e => e.preventDefault(), { passive: false });
 
-  // ---------- WebSocket ----------
   const wsStatus = document.getElementById("wsStatus");
   const outEl = document.getElementById("out");
+  const vMaxSlider = document.getElementById("vMaxSlider");
+  const vMaxValue = document.getElementById("vMaxValue");
+  const controlArea = document.getElementById("controlArea");
+  const joystick = document.getElementById("joystick");
+  const stick = document.getElementById("stick");
 
-  const ws = new WebSocket(`ws://${location.host}/ws`);
-  ws.onopen = () => {
-    wsStatus.textContent = "WebSocket: verbunden";
-    wsStatus.classList.remove("err");
-    wsStatus.classList.add("ok");
-  };
-  ws.onclose = () => {
-    wsStatus.textContent = "WebSocket: nicht verbunden";
-    wsStatus.classList.remove("ok");
-    wsStatus.classList.add("err");
-  };
+  const W_MAX = 6.0;                  // rad/s; Backend muss mindestens denselben Wert erlauben.
+  const PAD_RADIUS = 84.0;            // entspricht aPadRadius
+  const STICK_RADIUS = 34.0;          // entspricht aStickRadius
+  const MAX_VECTOR_LENGTH = PAD_RADIUS - STICK_RADIUS;
+  const SEND_PERIOD_MS = 50;          // 20 Hz wie Backend-Timer
+
+  let ws = null;
+  let connected = false;
+
+  let active = false;
+  let pointerId = null;
+
+  // APK-Variablen semantisch nachgebildet
+  let aPadX = 0.0;
+  let aPadY = 0.0;
+  let aStickX = 0.0;
+  let aStickY = 0.0;
+  let aVectorLength = 0.0;
+  let aVectorAngle = 0.0;
+
+  function clamp(x, lo, hi) {
+    return Math.max(lo, Math.min(hi, x));
+  }
+
+  function currentVMax() {
+    return Number.parseFloat(vMaxSlider.value);
+  }
+
+  function updateSliderLabel() {
+    vMaxValue.textContent = `${currentVMax().toFixed(2)} m/s`;
+  }
+
+  vMaxSlider.addEventListener("input", updateSliderLabel);
+  updateSliderLabel();
+
+  function connectWebSocket() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+
+    ws.onopen = () => {
+      connected = true;
+      wsStatus.textContent = "WebSocket: verbunden";
+      wsStatus.classList.remove("err");
+      wsStatus.classList.add("ok");
+    };
+
+    ws.onclose = () => {
+      connected = false;
+      wsStatus.textContent = "WebSocket: nicht verbunden";
+      wsStatus.classList.remove("ok");
+      wsStatus.classList.add("err");
+      window.setTimeout(connectWebSocket, 1000);
+    };
+
+    ws.onerror = () => {
+      try { ws.close(); } catch (_) {}
+    };
+  }
+
+  connectWebSocket();
 
   function send(v, w) {
-    if (ws.readyState === WebSocket.OPEN) {
+    if (connected && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ v, w }));
     }
   }
 
-  /* === Maximalwerte (bewusst > 1 m/s) === */
-  const V_MAX = 3.0;   // m/s
-  const W_MAX = 6.0;   // rad/s
-
-  /* === Spin-only Fenster === */
-  const SPIN_WINDOW_DEG = 30.0;
-  const SPIN_WINDOW_RAD = SPIN_WINDOW_DEG * Math.PI / 180.0;
-
-  function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
-  function angleRad(x, y) { return Math.atan2(y, x); }
-  function absAngleDiff(a, b) {
-    let d = a - b;
-    while (d > Math.PI) d -= 2 * Math.PI;
-    while (d < -Math.PI) d += 2 * Math.PI;
-    return Math.abs(d);
+  function placeJoystick() {
+    joystick.style.left = `${aPadX}px`;
+    joystick.style.top = `${aPadY}px`;
+    joystick.classList.add("active");
   }
 
-  const joy = document.getElementById("joystick");
-  const stick = document.getElementById("stick");
-
-  let active = false;
-  let pointerId = null;
-  let jx = 0.0, jy = 0.0;
-
-  function setStick(nx, ny) {
-    const m = joy.getBoundingClientRect().width * 0.275;
-    stick.style.transform =
-      `translate(${nx * m}px, ${-ny * m}px) translate(-50%, -50%)`;
+  function placeStick() {
+    const dx = aStickX - aPadX;
+    const dy = aStickY - aPadY;
+    stick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
   }
 
-  function updateFromPointer(x, y) {
-    const r = joy.getBoundingClientRect();
-    let dx = x - (r.left + r.width / 2);
-    let dy = y - (r.top + r.height / 2);
-    const m = r.width * 0.275;
-    const d = Math.hypot(dx, dy);
-    if (d > m && d > 0) {
-      dx *= m / d;
-      dy *= m / d;
+  function getLocalPoint(e) {
+    const rect = controlArea.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  }
+
+  function drawJoystickStart(x, y) {
+    aPadX = x;
+    aPadY = y;
+    aStickX = x;
+    aStickY = y;
+    aVectorLength = 0.0;
+    aVectorAngle = 0.0;
+    placeJoystick();
+    placeStick();
+  }
+
+  function drawJoystickMove(x, y) {
+    const dx = x - aPadX;
+    const dy = y - aPadY;
+
+    aVectorLength = Math.hypot(dx, dy);
+
+    // Android/APK-Konvention: Winkel gegen die nach oben gerichtete Achse.
+    aVectorAngle = Math.atan2(dx, -dy);
+
+    if (aVectorLength > MAX_VECTOR_LENGTH && aVectorLength > 0.0) {
+      aVectorLength = MAX_VECTOR_LENGTH;
+      aStickX = aPadX + MAX_VECTOR_LENGTH * Math.sin(aVectorAngle);
+      aStickY = aPadY - MAX_VECTOR_LENGTH * Math.cos(aVectorAngle);
+    } else {
+      aStickX = x;
+      aStickY = y;
     }
-    jx = clamp(dx / m, -1, 1);
-    jy = clamp(-dy / m, -1, 1);
-    setStick(jx, jy);
+
+    placeStick();
   }
 
-  function stop() {
+  function drawJoystickStop() {
+    aPadX = 0.0;
+    aPadY = 0.0;
+    aStickX = 0.0;
+    aStickY = 0.0;
+    aVectorLength = 0.0;
+    aVectorAngle = 0.0;
+    joystick.classList.remove("active");
+    stick.style.transform = "translate(-50%, -50%)";
+  }
+
+  function getXrel() {
+    return clamp((aStickX - aPadX) / MAX_VECTOR_LENGTH, -1.0, 1.0);
+  }
+
+  function getYrel() {
+    return clamp((aStickY - aPadY) / MAX_VECTOR_LENGTH, -1.0, 1.0);
+  }
+
+  function getActualSpeedRatio() {
+    return clamp(aVectorLength / MAX_VECTOR_LENGTH, 0.0, 1.0);
+  }
+
+  function getActualAngle() {
+    return -aVectorAngle;
+  }
+
+  function stopMotion() {
     active = false;
-    jx = jy = 0;
-    setStick(0, 0);
-    send(0, 0);
-    outEl.textContent = `v=0.00 m/s, w=0.00 rad/s`;
+    pointerId = null;
+    drawJoystickStop();
+    send(0.0, 0.0);
+    outEl.textContent = "v=0.00 m/s, w=0.00 rad/s";
   }
 
-  joy.addEventListener("pointerdown", e => {
+  controlArea.addEventListener("pointerdown", e => {
+    if (e.target === vMaxSlider) return;
+    e.preventDefault();
     active = true;
     pointerId = e.pointerId;
-    joy.setPointerCapture(pointerId);
-    updateFromPointer(e.clientX, e.clientY);
+    controlArea.setPointerCapture(pointerId);
+    const p = getLocalPoint(e);
+    drawJoystickStart(p.x, p.y);
+  }, { passive: false });
+
+  controlArea.addEventListener("pointermove", e => {
+    if (!active || e.pointerId !== pointerId) return;
+    e.preventDefault();
+    const p = getLocalPoint(e);
+    drawJoystickMove(p.x, p.y);
+  }, { passive: false });
+
+  controlArea.addEventListener("pointerup", e => {
+    if (e.pointerId === pointerId) stopMotion();
   });
 
-  joy.addEventListener("pointermove", e => {
-    if (active && e.pointerId === pointerId)
-      updateFromPointer(e.clientX, e.clientY);
+  controlArea.addEventListener("pointercancel", e => {
+    if (e.pointerId === pointerId) stopMotion();
   });
 
-  joy.addEventListener("pointerup", stop);
-  joy.addEventListener("pointercancel", stop);
-  joy.addEventListener("lostpointercapture", stop);
+  controlArea.addEventListener("lostpointercapture", () => {
+    if (active) stopMotion();
+  });
 
-  /* ---------- Control loop ---------- */
+  window.addEventListener("blur", () => {
+    if (active) stopMotion();
+  });
+
   setInterval(() => {
     if (!active) return;
 
-    let v = clamp(jy * V_MAX, -V_MAX, V_MAX);
+    const speedRatio = getActualSpeedRatio();
+    const xRel = getXrel();
+    const yRel = getYrel();
 
-    const steerSign = (jy >= 0) ? 1 : -1;
-    let w = clamp((-jx * W_MAX) * steerSign, -W_MAX, W_MAX);
-
-    const a = angleRad(jx, jy);
-    if (
-      absAngleDiff(a, 0) <= SPIN_WINDOW_RAD ||
-      absAngleDiff(a, Math.PI) <= SPIN_WINDOW_RAD
-    ) {
-      v = 0.0;
-    }
+    // APK-Logik für kartesische Steuerung:
+    // linear_x  = -Yrel * SpeedRatio * max_velocity_linear
+    // angular_z = -Xrel * SpeedRatio * max_velocity_angular
+    const v = -yRel * speedRatio * currentVMax();
+    const w = -xRel * speedRatio * W_MAX;
 
     send(v, w);
     outEl.textContent = `v=${v.toFixed(2)} m/s, w=${w.toFixed(2)} rad/s`;
-  }, 50);
+  }, SEND_PERIOD_MS);
 </script>
 </body>
 </html>
