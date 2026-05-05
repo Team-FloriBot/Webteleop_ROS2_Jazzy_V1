@@ -21,7 +21,7 @@ class CmdVelBridge(Node):
         super().__init__("cmdvel_web_bridge")
 
         self.declare_parameter("cmd_vel_topic", "/cmd_vel")
-        self.declare_parameter("max_linear", 0.25)   # m/s
+        self.declare_parameter("max_linear", 3.00)   # m/s
         self.declare_parameter("max_angular", 0.9)   # rad/s
         self.declare_parameter("timeout_s", 0.3)     # s (Deadman)
 
