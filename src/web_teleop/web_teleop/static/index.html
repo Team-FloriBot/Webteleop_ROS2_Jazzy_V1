@@ -191,6 +191,12 @@
         <span class="slider-value" id="vMaxValue">0.25 m/s</span>
       </div>
 
+      <div class="slider-row">
+        <label class="slider-label" for="wMaxSlider">Maximale Winkelgeschwindigkeit</label>
+        <input id="wMaxSlider" type="range" min="0.10" max="6.00" step="0.10" value="3.00" />
+        <span class="slider-value" id="wMaxValue">3.00 rad/s</span>
+      </div>
+
       <p class="status out">Sende: <code id="out">v=0.00 m/s, w=0.00 rad/s</code></p>
     </div>
 
@@ -211,11 +217,12 @@
   const outEl = document.getElementById("out");
   const vMaxSlider = document.getElementById("vMaxSlider");
   const vMaxValue = document.getElementById("vMaxValue");
+  const wMaxSlider = document.getElementById("wMaxSlider");
+  const wMaxValue = document.getElementById("wMaxValue");
   const controlArea = document.getElementById("controlArea");
   const joystick = document.getElementById("joystick");
   const stick = document.getElementById("stick");
 
-  const W_MAX = 6.0;                  // rad/s; Backend muss mindestens denselben Wert erlauben.
   const PAD_RADIUS = 84.0;            // entspricht aPadRadius
   const STICK_RADIUS = 34.0;          // entspricht aStickRadius
   const MAX_VECTOR_LENGTH = PAD_RADIUS - STICK_RADIUS;
@@ -243,12 +250,18 @@
     return Number.parseFloat(vMaxSlider.value);
   }
 
-  function updateSliderLabel() {
-    vMaxValue.textContent = `${currentVMax().toFixed(2)} m/s`;
+  function currentWMax() {
+    return Number.parseFloat(wMaxSlider.value);
   }
 
-  vMaxSlider.addEventListener("input", updateSliderLabel);
-  updateSliderLabel();
+  function updateSliderLabels() {
+    vMaxValue.textContent = `${currentVMax().toFixed(2)} m/s`;
+    wMaxValue.textContent = `${currentWMax().toFixed(2)} rad/s`;
+  }
+
+  vMaxSlider.addEventListener("input", updateSliderLabels);
+  wMaxSlider.addEventListener("input", updateSliderLabels);
+  updateSliderLabels();
 
   function connectWebSocket() {
     ws = new WebSocket(`ws://${location.host}/ws`);
@@ -412,7 +425,7 @@
     // linear_x  = -Yrel * SpeedRatio * max_velocity_linear
     // angular_z = -Xrel * SpeedRatio * max_velocity_angular
     const v = -yRel * speedRatio * currentVMax();
-    const w = -xRel * speedRatio * W_MAX;
+    const w = -xRel * speedRatio * currentWMax();
 
     send(v, w);
     outEl.textContent = `v=${v.toFixed(2)} m/s, w=${w.toFixed(2)} rad/s`;
