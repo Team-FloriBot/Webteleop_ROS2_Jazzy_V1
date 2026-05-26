@@ -1,168 +1,513 @@
-import asyncio
-import json
-import signal
-import time
-import os
-from pathlib import Path
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>FloriBot Web Teleop</title>
 
-import rclpy
-from rclpy.node import Node
-from geometry_msgs.msg import Twist
+  <style>
+    :root {
+      --pad-radius: 100px;
+      --stick-radius: 34px;
+      --max-vector-length: 50px;
+    }
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+      background: #f7f7f7;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
 
-from ament_index_python.packages import get_package_share_directory
+    .page {
+      height: 100%;
+      width: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 12px;
+      padding:
+        max(14px, env(safe-area-inset-top))
+        max(14px, env(safe-area-inset-right))
+        max(14px, env(safe-area-inset-bottom))
+        max(14px, env(safe-area-inset-left));
+      box-sizing: border-box;
+    }
 
+    .top {
+      display: grid;
+      gap: 10px;
+      background: white;
+      border-radius: 14px;
+      padding: 12px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+      z-index: 5;
+    }
 
-class CmdVelBridge(Node):
-    def __init__(self):
-        super().__init__("cmdvel_web_bridge")
+    .title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
 
-        self.declare_parameter("cmd_vel_topic", "/cmd_vel/webteleop")
-        self.declare_parameter("max_linear", 1.00)   # m/s
-        self.declare_parameter("max_angular", 0.9)   # rad/s
-        self.declare_parameter("timeout_s", 0.3)     # s (Deadman)
+    .title {
+      font-size: 18px;
+      font-weight: 650;
+      margin: 0;
+    }
 
-        topic = self.get_parameter("cmd_vel_topic").get_parameter_value().string_value
-        self.max_linear = float(self.get_parameter("max_linear").value)
-        self.max_angular = float(self.get_parameter("max_angular").value)
-        self.timeout_s = float(self.get_parameter("timeout_s").value)
+    .status {
+      margin: 0;
+      font-size: 14px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      width: fit-content;
+      white-space: nowrap;
+    }
 
-        self.publisher_ = self.create_publisher(Twist, topic, 10)
+    .status.ok {
+      background: #c8f7c5;
+      color: #1b5e20;
+    }
 
-        self._last_rx = time.monotonic()
-        self._v = 0.0
-        self._w = 0.0
+    .status.err {
+      background: #f8c7c7;
+      color: #7f0000;
+    }
 
-        # 20 Hz
-        self.create_timer(0.05, self._timer_cb)
+    .out code {
+      background: #f0f0f0;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
 
-    def update(self, v: float, w: float):
-        v = max(-self.max_linear, min(self.max_linear, v))
-        w = max(-self.max_angular, min(self.max_angular, w))
-        self._v = v
-        self._w = w
-        self._last_rx = time.monotonic()
+    .slider-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
 
-    def _timer_cb(self):
-        msg = Twist()
-        if (time.monotonic() - self._last_rx) > self.timeout_s:
-            msg.linear.x = 0.0
-            msg.angular.z = 0.0
-        else:
-            msg.linear.x = float(self._v)
-            msg.angular.z = float(self._w)
-        self.publisher_.publish(msg)
+    .slider-label {
+      grid-column: 1 / -1;
+      font-size: 14px;
+      color: #333;
+    }
 
+    input[type="range"] {
+      width: 100%;
+      touch-action: pan-x;
+    }
 
-async def ros_spin(node: Node, stop_event: asyncio.Event):
-    try:
-        while rclpy.ok() and not stop_event.is_set():
-            rclpy.spin_once(node, timeout_sec=0.0)
-            await asyncio.sleep(0.001)
-    except asyncio.CancelledError:
-        pass
+    .slider-value {
+      min-width: 72px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 14px;
+    }
 
+    .control-area {
+      position: relative;
+      min-height: 0;
+      border-radius: 18px;
+      background:
+        linear-gradient(90deg, rgba(0, 0, 0, 0.035) 1px, transparent 1px),
+        linear-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px),
+        #ffffff;
+      background-size: 28px 28px;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+      touch-action: none;
+    }
 
-def build_app(bridge: CmdVelBridge) -> FastAPI:
-    # 🔧 ROS2-konformer Pfad zum share-Verzeichnis
-    pkg_share = Path(get_package_share_directory("web_teleop"))
-    static_dir = pkg_share / "static"
-    index_file = static_dir / "index.html"
+    .hint {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      color: #777;
+      font-size: 15px;
+      text-align: center;
+      pointer-events: none;
+    }
 
-    if not static_dir.is_dir():
-        raise RuntimeError(f"Static directory not found: {static_dir}")
-    if not index_file.is_file():
-        raise RuntimeError(f"Index file not found: {index_file}")
+    .joystick {
+      position: absolute;
+      width: calc(2 * var(--pad-radius));
+      height: calc(2 * var(--pad-radius));
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(
+        circle at 35% 35%,
+        rgba(255, 255, 255, 0.95),
+        rgba(210, 210, 210, 0.88)
+      );
+      border: 2px solid rgba(80, 80, 80, 0.35);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+      display: none;
+      pointer-events: none;
+    }
 
-    app = FastAPI()
+    .joystick.active {
+      display: block;
+    }
 
-    app.mount(
-        "/static",
-        StaticFiles(directory=str(static_dir)),
-        name="static",
-    )
+    .stick {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: calc(2 * var(--stick-radius));
+      height: calc(2 * var(--stick-radius));
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle at 35% 35%, #ffffff, #d7d7d7);
+      border: 2px solid rgba(50, 50, 50, 0.45);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+    }
 
-    @app.get("/")
-    def index():
-        return FileResponse(str(index_file))
+    .crosshair::before,
+    .crosshair::after {
+      content: "";
+      position: absolute;
+      background: rgba(0, 0, 0, 0.16);
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
 
-    @app.websocket("/ws")
-    async def websocket_endpoint(ws: WebSocket):
-        await ws.accept()
-        try:
-            while True:
-                data = await ws.receive_text()
-                obj = json.loads(data)
-                bridge.update(
-                    float(obj.get("v", 0.0)),
-                    float(obj.get("w", 0.0)),
-                )
-                await ws.send_text('{"ok": true}')
-        except (WebSocketDisconnect, json.JSONDecodeError, ValueError):
-            return
+    .crosshair::before {
+      width: 1px;
+      height: 76%;
+    }
 
-    return app
+    .crosshair::after {
+      width: 76%;
+      height: 1px;
+    }
+  </style>
+</head>
 
+<body>
+  <div class="page">
+    <div class="top">
+      <div class="title-row">
+        <p class="title">Web Teleop</p>
+        <p class="status err" id="wsStatus">WebSocket: nicht verbunden</p>
+      </div>
 
-async def main_async():
-    import uvicorn
+      <div class="slider-row">
+        <label class="slider-label" for="vMaxSlider">
+          Maximale lineare Geschwindigkeit
+        </label>
+        <input
+          id="vMaxSlider"
+          type="range"
+          min="0.05"
+          max="1.00"
+          step="0.05"
+          value="1.00"
+        />
+        <span class="slider-value" id="vMaxValue">1.00 m/s</span>
+      </div>
 
-    rclpy.init()
-    bridge = CmdVelBridge()
-    app = build_app(bridge)
+      <div class="slider-row">
+        <label class="slider-label" for="wMaxSlider">
+          Maximale Winkelgeschwindigkeit
+        </label>
+        <input
+          id="wMaxSlider"
+          type="range"
+          min="0.10"
+          max="0.90"
+          step="0.05"
+          value="0.90"
+        />
+        <span class="slider-value" id="wMaxValue">0.90 rad/s</span>
+      </div>
 
-    config = uvicorn.Config(
-        app=app,
-        host="0.0.0.0",
-        port=8000,
-        log_level="info",
-    )
-    server = uvicorn.Server(config)
+      <p class="status out">
+        Sende: <code id="out">v=0.00 m/s, w=0.00 rad/s</code>
+      </p>
+    </div>
 
-    stop_event = asyncio.Event()
-    loop = asyncio.get_running_loop()
+    <div class="control-area" id="controlArea">
+      <div class="hint">Finger aufsetzen und ziehen</div>
 
-    def request_shutdown():
-        stop_event.set()
-        server.should_exit = True
+      <div class="joystick crosshair" id="joystick">
+        <div class="stick" id="stick"></div>
+      </div>
+    </div>
+  </div>
 
-    try:
-        loop.add_signal_handler(signal.SIGINT, request_shutdown)
-        loop.add_signal_handler(signal.SIGTERM, request_shutdown)
-    except NotImplementedError:
-        signal.signal(signal.SIGINT, lambda *_: request_shutdown())
-        signal.signal(signal.SIGTERM, lambda *_: request_shutdown())
+  <script>
+    document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
+    document.addEventListener("gesturechange", e => e.preventDefault(), { passive: false });
+    document.addEventListener("gestureend", e => e.preventDefault(), { passive: false });
 
-    ros_task = asyncio.create_task(ros_spin(bridge, stop_event))
-    web_task = asyncio.create_task(server.serve())
+    const wsStatus = document.getElementById("wsStatus");
+    const outEl = document.getElementById("out");
 
-    try:
-        done, pending = await asyncio.wait(
-            {ros_task, web_task},
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+    const vMaxSlider = document.getElementById("vMaxSlider");
+    const vMaxValue = document.getElementById("vMaxValue");
 
-        request_shutdown()
+    const wMaxSlider = document.getElementById("wMaxSlider");
+    const wMaxValue = document.getElementById("wMaxValue");
 
-        for t in pending:
-            t.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
+    const controlArea = document.getElementById("controlArea");
+    const joystick = document.getElementById("joystick");
+    const stick = document.getElementById("stick");
 
-    finally:
-        try:
-            bridge.destroy_node()
-        except Exception:
-            pass
+    const PAD_RADIUS = 100.0;
+    const STICK_RADIUS = 34.0;
+    const MAX_VECTOR_LENGTH = PAD_RADIUS - STICK_RADIUS;
+    const SEND_PERIOD_MS = 50;
 
-        try:
-            if rclpy.ok():
-                rclpy.shutdown()
-        except Exception:
-            pass
+    let ws = null;
+    let connected = false;
 
+    let active = false;
+    let pointerId = null;
 
-def main():
-    asyncio.run(main_async())
+    let aPadX = 0.0;
+    let aPadY = 0.0;
+    let aStickX = 0.0;
+    let aStickY = 0.0;
+    let aVectorLength = 0.0;
+    let aVectorAngle = 0.0;
+
+    function clamp(x, lo, hi) {
+      return Math.max(lo, Math.min(hi, x));
+    }
+
+    function currentVMax() {
+      return Number.parseFloat(vMaxSlider.value);
+    }
+
+    function currentWMax() {
+      return Number.parseFloat(wMaxSlider.value);
+    }
+
+    function updateSliderLabels() {
+      vMaxValue.textContent = `${currentVMax().toFixed(2)} m/s`;
+      wMaxValue.textContent = `${currentWMax().toFixed(2)} rad/s`;
+    }
+
+    vMaxSlider.addEventListener("input", updateSliderLabels);
+    wMaxSlider.addEventListener("input", updateSliderLabels);
+    updateSliderLabels();
+
+    function connectWebSocket() {
+      ws = new WebSocket(`ws://${location.host}/ws`);
+
+      ws.onopen = () => {
+        connected = true;
+        wsStatus.textContent = "WebSocket: verbunden";
+        wsStatus.classList.remove("err");
+        wsStatus.classList.add("ok");
+      };
+
+      ws.onclose = () => {
+        connected = false;
+        wsStatus.textContent = "WebSocket: nicht verbunden";
+        wsStatus.classList.remove("ok");
+        wsStatus.classList.add("err");
+        window.setTimeout(connectWebSocket, 1000);
+      };
+
+      ws.onerror = () => {
+        try {
+          ws.close();
+        } catch (_) {
+          // Keine Aktion erforderlich.
+        }
+      };
+    }
+
+    connectWebSocket();
+
+    function send(v, w) {
+      if (connected && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ v, w }));
+      }
+    }
+
+    function placeJoystick() {
+      joystick.style.left = `${aPadX}px`;
+      joystick.style.top = `${aPadY}px`;
+      joystick.classList.add("active");
+    }
+
+    function placeStick() {
+      const dx = aStickX - aPadX;
+      const dy = aStickY - aPadY;
+
+      stick.style.transform =
+        `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    }
+
+    function getLocalPoint(e) {
+      const rect = controlArea.getBoundingClientRect();
+
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+    }
+
+    function drawJoystickStart(x, y) {
+      aPadX = x;
+      aPadY = y;
+      aStickX = x;
+      aStickY = y;
+      aVectorLength = 0.0;
+      aVectorAngle = 0.0;
+
+      placeJoystick();
+      placeStick();
+    }
+
+    function drawJoystickMove(x, y) {
+      const dx = x - aPadX;
+      const dy = y - aPadY;
+
+      aVectorLength = Math.hypot(dx, dy);
+
+      // Winkel gegen die nach oben gerichtete Achse.
+      aVectorAngle = Math.atan2(dx, -dy);
+
+      if (aVectorLength > MAX_VECTOR_LENGTH && aVectorLength > 0.0) {
+        aVectorLength = MAX_VECTOR_LENGTH;
+        aStickX = aPadX + MAX_VECTOR_LENGTH * Math.sin(aVectorAngle);
+        aStickY = aPadY - MAX_VECTOR_LENGTH * Math.cos(aVectorAngle);
+      } else {
+        aStickX = x;
+        aStickY = y;
+      }
+
+      placeStick();
+    }
+
+    function drawJoystickStop() {
+      aPadX = 0.0;
+      aPadY = 0.0;
+      aStickX = 0.0;
+      aStickY = 0.0;
+      aVectorLength = 0.0;
+      aVectorAngle = 0.0;
+
+      joystick.classList.remove("active");
+      stick.style.transform = "translate(-50%, -50%)";
+    }
+
+    function getXrel() {
+      return clamp(
+        (aStickX - aPadX) / MAX_VECTOR_LENGTH,
+        -1.0,
+        1.0
+      );
+    }
+
+    function getYrel() {
+      return clamp(
+        (aStickY - aPadY) / MAX_VECTOR_LENGTH,
+        -1.0,
+        1.0
+      );
+    }
+
+    function getActualSpeedRatio() {
+      return clamp(
+        aVectorLength / MAX_VECTOR_LENGTH,
+        0.0,
+        1.0
+      );
+    }
+
+    function stopMotion() {
+      active = false;
+      pointerId = null;
+
+      drawJoystickStop();
+      send(0.0, 0.0);
+
+      outEl.textContent = "v=0.00 m/s, w=0.00 rad/s";
+    }
+
+    controlArea.addEventListener("pointerdown", e => {
+      e.preventDefault();
+
+      active = true;
+      pointerId = e.pointerId;
+
+      controlArea.setPointerCapture(pointerId);
+
+      const p = getLocalPoint(e);
+      drawJoystickStart(p.x, p.y);
+    }, { passive: false });
+
+    controlArea.addEventListener("pointermove", e => {
+      if (!active || e.pointerId !== pointerId) {
+        return;
+      }
+
+      e.preventDefault();
+
+      const p = getLocalPoint(e);
+      drawJoystickMove(p.x, p.y);
+    }, { passive: false });
+
+    controlArea.addEventListener("pointerup", e => {
+      if (e.pointerId === pointerId) {
+        stopMotion();
+      }
+    });
+
+    controlArea.addEventListener("pointercancel", e => {
+      if (e.pointerId === pointerId) {
+        stopMotion();
+      }
+    });
+
+    controlArea.addEventListener("lostpointercapture", () => {
+      if (active) {
+        stopMotion();
+      }
+    });
+
+    window.addEventListener("blur", () => {
+      if (active) {
+        stopMotion();
+      }
+    });
+
+    setInterval(() => {
+      if (!active) {
+        return;
+      }
+
+      const speedRatio = getActualSpeedRatio();
+      const xRel = getXrel();
+      const yRel = getYrel();
+
+      const v = -yRel * speedRatio * currentVMax();
+
+      // Beim Rückwärtsfahren wird das Lenkvorzeichen invertiert,
+      // damit links und rechts fahrtrichtungsbezogen korrekt bleiben.
+      const steeringDirection = (v < 0.0) ? -1.0 : 1.0;
+      const w = -xRel * steeringDirection * speedRatio * currentWMax();
+
+      send(v, w);
+
+      outEl.textContent =
+        `v=${v.toFixed(2)} m/s, w=${w.toFixed(2)} rad/s`;
+    }, SEND_PERIOD_MS);
+  </script>
+</body>
+</html>
