@@ -1,513 +1,379 @@
-<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
-  <title>FloriBot Web Teleop</title>
+"""ROS 2 backed WebTeleop server with cmd_vel source selection."""
 
-  <style>
-    :root {
-      --pad-radius: 100px;
-      --stick-radius: 34px;
-      --max-vector-length: 50px;
-    }
+from __future__ import annotations
 
-    html, body {
-      height: 100%;
-      margin: 0;
-      overflow: hidden;
-      overscroll-behavior: none;
-      -webkit-user-select: none;
-      user-select: none;
-      -webkit-touch-callout: none;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: none;
-      background: #f7f7f7;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
+import asyncio
+import json
+import threading
+import time
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
 
-    .page {
-      height: 100%;
-      width: 100%;
-      display: grid;
-      grid-template-rows: auto 1fr;
-      gap: 12px;
-      padding:
-        max(14px, env(safe-area-inset-top))
-        max(14px, env(safe-area-inset-right))
-        max(14px, env(safe-area-inset-bottom))
-        max(14px, env(safe-area-inset-left));
-      box-sizing: border-box;
-    }
+import rclpy
+from ament_index_python.packages import get_package_share_directory
+from cmd_vel_selector.srv import SelectSource
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from geometry_msgs.msg import Twist
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
+import uvicorn
 
-    .top {
-      display: grid;
-      gap: 10px;
-      background: white;
-      border-radius: 14px;
-      padding: 12px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-      z-index: 5;
-    }
 
-    .title-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-    }
+VALID_SOURCES = ("none", "webteleop", "task1", "task2", "task3", "task4", "task5")
+SOURCE_LABELS = {
+    "none": "Stopp / keine Quelle",
+    "webteleop": "Webteleop",
+    "task1": "Task 1",
+    "task2": "Task 2",
+    "task3": "Task 3",
+    "task4": "Task 4",
+    "task5": "Task 5",
+}
 
-    .title {
-      font-size: 18px;
-      font-weight: 650;
-      margin: 0;
-    }
 
-    .status {
-      margin: 0;
-      font-size: 14px;
-      padding: 4px 8px;
-      border-radius: 8px;
-      width: fit-content;
-      white-space: nowrap;
-    }
+class ConnectionManager:
+    def __init__(self) -> None:
+        self._connections: set[WebSocket] = set()
+        self._lock = asyncio.Lock()
 
-    .status.ok {
-      background: #c8f7c5;
-      color: #1b5e20;
-    }
+    async def connect(self, websocket: WebSocket) -> None:
+        await websocket.accept()
+        async with self._lock:
+            self._connections.add(websocket)
 
-    .status.err {
-      background: #f8c7c7;
-      color: #7f0000;
-    }
+    async def disconnect(self, websocket: WebSocket) -> None:
+        async with self._lock:
+            self._connections.discard(websocket)
 
-    .out code {
-      background: #f0f0f0;
-      padding: 2px 6px;
-      border-radius: 6px;
-    }
+    async def broadcast(self, message: dict[str, Any]) -> None:
+        dead: list[WebSocket] = []
+        payload = json.dumps(message)
 
-    .slider-row {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 10px;
-      align-items: center;
-    }
+        async with self._lock:
+            connections = tuple(self._connections)
 
-    .slider-label {
-      grid-column: 1 / -1;
-      font-size: 14px;
-      color: #333;
-    }
+        for websocket in connections:
+            try:
+                await websocket.send_text(payload)
+            except Exception:
+                dead.append(websocket)
 
-    input[type="range"] {
-      width: 100%;
-      touch-action: pan-x;
-    }
+        if dead:
+            async with self._lock:
+                for websocket in dead:
+                    self._connections.discard(websocket)
 
-    .slider-value {
-      min-width: 72px;
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-      font-size: 14px;
-    }
 
-    .control-area {
-      position: relative;
-      min-height: 0;
-      border-radius: 18px;
-      background:
-        linear-gradient(90deg, rgba(0, 0, 0, 0.035) 1px, transparent 1px),
-        linear-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px),
-        #ffffff;
-      background-size: 28px 28px;
-      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
-      overflow: hidden;
-      touch-action: none;
-    }
+class WebTeleopNode(Node):
+    def __init__(
+        self,
+        event_loop: asyncio.AbstractEventLoop,
+        manager: ConnectionManager,
+    ) -> None:
+        super().__init__("web_teleop_server")
 
-    .hint {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      color: #777;
-      font-size: 15px;
-      text-align: center;
-      pointer-events: none;
-    }
+        self._loop = event_loop
+        self._manager = manager
+        self._active_source = "unknown"
+        self._last_cmd_time = time.monotonic()
+        self._moving_command_active = False
 
-    .joystick {
-      position: absolute;
-      width: calc(2 * var(--pad-radius));
-      height: calc(2 * var(--pad-radius));
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      background: radial-gradient(
-        circle at 35% 35%,
-        rgba(255, 255, 255, 0.95),
-        rgba(210, 210, 210, 0.88)
-      );
-      border: 2px solid rgba(80, 80, 80, 0.35);
-      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
-      display: none;
-      pointer-events: none;
-    }
+        self._cmd_vel_topic = self.declare_parameter(
+            "cmd_vel_topic",
+            "/cmd_vel/webteleop",
+        ).value
+        self._max_linear = float(
+            self.declare_parameter("max_linear", 3.0).value
+        )
+        self._max_angular = float(
+            self.declare_parameter("max_angular", 6.0).value
+        )
+        self._timeout_s = float(
+            self.declare_parameter("timeout_s", 0.3).value
+        )
 
-    .joystick.active {
-      display: block;
-    }
+        self._publisher = self.create_publisher(
+            Twist,
+            self._cmd_vel_topic,
+            10,
+        )
 
-    .stick {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: calc(2 * var(--stick-radius));
-      height: calc(2 * var(--stick-radius));
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      background: radial-gradient(circle at 35% 35%, #ffffff, #d7d7d7);
-      border: 2px solid rgba(50, 50, 50, 0.45);
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
-    }
+        selector_qos = QoSProfile(depth=1)
+        selector_qos.reliability = ReliabilityPolicy.RELIABLE
+        selector_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
 
-    .crosshair::before,
-    .crosshair::after {
-      content: "";
-      position: absolute;
-      background: rgba(0, 0, 0, 0.16);
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-    }
+        self._status_subscription = self.create_subscription(
+            String,
+            "/cmd_vel_selector/active_source",
+            self._active_source_callback,
+            selector_qos,
+        )
 
-    .crosshair::before {
-      width: 1px;
-      height: 76%;
-    }
+        self._select_client = self.create_client(
+            SelectSource,
+            "/cmd_vel_selector/select_source",
+        )
 
-    .crosshair::after {
-      width: 76%;
-      height: 1px;
-    }
-  </style>
-</head>
+        self._watchdog = self.create_timer(
+            0.05,
+            self._watchdog_callback,
+        )
 
-<body>
-  <div class="page">
-    <div class="top">
-      <div class="title-row">
-        <p class="title">Web Teleop</p>
-        <p class="status err" id="wsStatus">WebSocket: nicht verbunden</p>
-      </div>
+        self.get_logger().info(
+            f"Webteleop publiziert Fahrbefehle auf '{self._cmd_vel_topic}'."
+        )
 
-      <div class="slider-row">
-        <label class="slider-label" for="vMaxSlider">
-          Maximale lineare Geschwindigkeit
-        </label>
-        <input
-          id="vMaxSlider"
-          type="range"
-          min="0.05"
-          max="1.00"
-          step="0.05"
-          value="1.00"
-        />
-        <span class="slider-value" id="vMaxValue">1.00 m/s</span>
-      </div>
+    @property
+    def active_source(self) -> str:
+        return self._active_source
 
-      <div class="slider-row">
-        <label class="slider-label" for="wMaxSlider">
-          Maximale Winkelgeschwindigkeit
-        </label>
-        <input
-          id="wMaxSlider"
-          type="range"
-          min="0.10"
-          max="0.90"
-          step="0.05"
-          value="0.90"
-        />
-        <span class="slider-value" id="wMaxValue">0.90 rad/s</span>
-      </div>
-
-      <p class="status out">
-        Sende: <code id="out">v=0.00 m/s, w=0.00 rad/s</code>
-      </p>
-    </div>
-
-    <div class="control-area" id="controlArea">
-      <div class="hint">Finger aufsetzen und ziehen</div>
-
-      <div class="joystick crosshair" id="joystick">
-        <div class="stick" id="stick"></div>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
-    document.addEventListener("gesturechange", e => e.preventDefault(), { passive: false });
-    document.addEventListener("gestureend", e => e.preventDefault(), { passive: false });
-
-    const wsStatus = document.getElementById("wsStatus");
-    const outEl = document.getElementById("out");
-
-    const vMaxSlider = document.getElementById("vMaxSlider");
-    const vMaxValue = document.getElementById("vMaxValue");
-
-    const wMaxSlider = document.getElementById("wMaxSlider");
-    const wMaxValue = document.getElementById("wMaxValue");
-
-    const controlArea = document.getElementById("controlArea");
-    const joystick = document.getElementById("joystick");
-    const stick = document.getElementById("stick");
-
-    const PAD_RADIUS = 100.0;
-    const STICK_RADIUS = 34.0;
-    const MAX_VECTOR_LENGTH = PAD_RADIUS - STICK_RADIUS;
-    const SEND_PERIOD_MS = 50;
-
-    let ws = null;
-    let connected = false;
-
-    let active = false;
-    let pointerId = null;
-
-    let aPadX = 0.0;
-    let aPadY = 0.0;
-    let aStickX = 0.0;
-    let aStickY = 0.0;
-    let aVectorLength = 0.0;
-    let aVectorAngle = 0.0;
-
-    function clamp(x, lo, hi) {
-      return Math.max(lo, Math.min(hi, x));
-    }
-
-    function currentVMax() {
-      return Number.parseFloat(vMaxSlider.value);
-    }
-
-    function currentWMax() {
-      return Number.parseFloat(wMaxSlider.value);
-    }
-
-    function updateSliderLabels() {
-      vMaxValue.textContent = `${currentVMax().toFixed(2)} m/s`;
-      wMaxValue.textContent = `${currentWMax().toFixed(2)} rad/s`;
-    }
-
-    vMaxSlider.addEventListener("input", updateSliderLabels);
-    wMaxSlider.addEventListener("input", updateSliderLabels);
-    updateSliderLabels();
-
-    function connectWebSocket() {
-      ws = new WebSocket(`ws://${location.host}/ws`);
-
-      ws.onopen = () => {
-        connected = true;
-        wsStatus.textContent = "WebSocket: verbunden";
-        wsStatus.classList.remove("err");
-        wsStatus.classList.add("ok");
-      };
-
-      ws.onclose = () => {
-        connected = false;
-        wsStatus.textContent = "WebSocket: nicht verbunden";
-        wsStatus.classList.remove("ok");
-        wsStatus.classList.add("err");
-        window.setTimeout(connectWebSocket, 1000);
-      };
-
-      ws.onerror = () => {
-        try {
-          ws.close();
-        } catch (_) {
-          // Keine Aktion erforderlich.
+    def status_payload(self) -> dict[str, Any]:
+        return {
+            "type": "selector_status",
+            "active_source": self._active_source,
+            "active_source_label": SOURCE_LABELS.get(
+                self._active_source,
+                self._active_source,
+            ),
+            "valid_sources": [
+                {
+                    "id": source,
+                    "label": SOURCE_LABELS[source],
+                }
+                for source in VALID_SOURCES
+            ],
         }
-      };
-    }
 
-    connectWebSocket();
+    def publish_cmd_vel(self, linear_x: float, angular_z: float) -> None:
+        linear_x = max(
+            -self._max_linear,
+            min(self._max_linear, float(linear_x)),
+        )
+        angular_z = max(
+            -self._max_angular,
+            min(self._max_angular, float(angular_z)),
+        )
 
-    function send(v, w) {
-      if (connected && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ v, w }));
-      }
-    }
+        message = Twist()
+        message.linear.x = linear_x
+        message.angular.z = angular_z
 
-    function placeJoystick() {
-      joystick.style.left = `${aPadX}px`;
-      joystick.style.top = `${aPadY}px`;
-      joystick.classList.add("active");
-    }
+        self._publisher.publish(message)
 
-    function placeStick() {
-      const dx = aStickX - aPadX;
-      const dy = aStickY - aPadY;
+        self._last_cmd_time = time.monotonic()
+        self._moving_command_active = linear_x != 0.0 or angular_z != 0.0
 
-      stick.style.transform =
-        `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-    }
+    def stop(self) -> None:
+        self.publish_cmd_vel(0.0, 0.0)
+        self._moving_command_active = False
 
-    function getLocalPoint(e) {
-      const rect = controlArea.getBoundingClientRect();
+    def select_source(self, source: str, websocket: WebSocket) -> None:
+        if source not in VALID_SOURCES:
+            self._schedule_send(
+                websocket,
+                {
+                    "type": "selection_result",
+                    "success": False,
+                    "message": "Ungültige Quelle.",
+                    "active_source": self._active_source,
+                },
+            )
+            return
 
-      return {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-      };
-    }
+        if not self._select_client.service_is_ready():
+            self._select_client.wait_for_service(timeout_sec=0.2)
 
-    function drawJoystickStart(x, y) {
-      aPadX = x;
-      aPadY = y;
-      aStickX = x;
-      aStickY = y;
-      aVectorLength = 0.0;
-      aVectorAngle = 0.0;
+        if not self._select_client.service_is_ready():
+            self._schedule_send(
+                websocket,
+                {
+                    "type": "selection_result",
+                    "success": False,
+                    "message": "cmd_vel_selector-Service ist nicht erreichbar.",
+                    "active_source": self._active_source,
+                },
+            )
+            return
 
-      placeJoystick();
-      placeStick();
-    }
+        request = SelectSource.Request()
+        request.source = source
 
-    function drawJoystickMove(x, y) {
-      const dx = x - aPadX;
-      const dy = y - aPadY;
+        future = self._select_client.call_async(request)
 
-      aVectorLength = Math.hypot(dx, dy);
+        def finish(done_future: Any) -> None:
+            try:
+                response = done_future.result()
+                payload = {
+                    "type": "selection_result",
+                    "success": bool(response.success),
+                    "message": response.message,
+                    "active_source": response.active_source,
+                    "active_source_label": SOURCE_LABELS.get(
+                        response.active_source,
+                        response.active_source,
+                    ),
+                }
+            except Exception as exc:  # pragma: no cover
+                payload = {
+                    "type": "selection_result",
+                    "success": False,
+                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
+                    "active_source": self._active_source,
+                }
 
-      // Winkel gegen die nach oben gerichtete Achse.
-      aVectorAngle = Math.atan2(dx, -dy);
+            self._schedule_send(websocket, payload)
 
-      if (aVectorLength > MAX_VECTOR_LENGTH && aVectorLength > 0.0) {
-        aVectorLength = MAX_VECTOR_LENGTH;
-        aStickX = aPadX + MAX_VECTOR_LENGTH * Math.sin(aVectorAngle);
-        aStickY = aPadY - MAX_VECTOR_LENGTH * Math.cos(aVectorAngle);
-      } else {
-        aStickX = x;
-        aStickY = y;
-      }
+        future.add_done_callback(finish)
 
-      placeStick();
-    }
+    def _active_source_callback(self, message: String) -> None:
+        self._active_source = message.data
+        self._schedule_broadcast(self.status_payload())
 
-    function drawJoystickStop() {
-      aPadX = 0.0;
-      aPadY = 0.0;
-      aStickX = 0.0;
-      aStickY = 0.0;
-      aVectorLength = 0.0;
-      aVectorAngle = 0.0;
+    def _watchdog_callback(self) -> None:
+        if (
+            self._moving_command_active
+            and time.monotonic() - self._last_cmd_time > self._timeout_s
+        ):
+            self.stop()
 
-      joystick.classList.remove("active");
-      stick.style.transform = "translate(-50%, -50%)";
-    }
+    def _schedule_broadcast(self, payload: dict[str, Any]) -> None:
+        asyncio.run_coroutine_threadsafe(
+            self._manager.broadcast(payload),
+            self._loop,
+        )
 
-    function getXrel() {
-      return clamp(
-        (aStickX - aPadX) / MAX_VECTOR_LENGTH,
-        -1.0,
-        1.0
-      );
-    }
+    def _schedule_send(
+        self,
+        websocket: WebSocket,
+        payload: dict[str, Any],
+    ) -> None:
+        asyncio.run_coroutine_threadsafe(
+            websocket.send_text(json.dumps(payload)),
+            self._loop,
+        )
 
-    function getYrel() {
-      return clamp(
-        (aStickY - aPadY) / MAX_VECTOR_LENGTH,
-        -1.0,
-        1.0
-      );
-    }
 
-    function getActualSpeedRatio() {
-      return clamp(
-        aVectorLength / MAX_VECTOR_LENGTH,
-        0.0,
-        1.0
-      );
-    }
+manager = ConnectionManager()
+ros_node: WebTeleopNode | None = None
+executor: MultiThreadedExecutor | None = None
+spin_thread: threading.Thread | None = None
 
-    function stopMotion() {
-      active = false;
-      pointerId = null;
 
-      drawJoystickStop();
-      send(0.0, 0.0);
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global ros_node, executor, spin_thread
 
-      outEl.textContent = "v=0.00 m/s, w=0.00 rad/s";
-    }
+    rclpy.init(args=None)
 
-    controlArea.addEventListener("pointerdown", e => {
-      e.preventDefault();
+    ros_node = WebTeleopNode(
+        asyncio.get_running_loop(),
+        manager,
+    )
 
-      active = true;
-      pointerId = e.pointerId;
+    executor = MultiThreadedExecutor(num_threads=2)
+    executor.add_node(ros_node)
 
-      controlArea.setPointerCapture(pointerId);
+    spin_thread = threading.Thread(
+        target=executor.spin,
+        daemon=True,
+    )
+    spin_thread.start()
 
-      const p = getLocalPoint(e);
-      drawJoystickStart(p.x, p.y);
-    }, { passive: false });
+    yield
 
-    controlArea.addEventListener("pointermove", e => {
-      if (!active || e.pointerId !== pointerId) {
-        return;
-      }
+    if ros_node is not None:
+        ros_node.stop()
 
-      e.preventDefault();
+    if executor is not None:
+        executor.shutdown()
 
-      const p = getLocalPoint(e);
-      drawJoystickMove(p.x, p.y);
-    }, { passive: false });
+    if ros_node is not None:
+        ros_node.destroy_node()
 
-    controlArea.addEventListener("pointerup", e => {
-      if (e.pointerId === pointerId) {
-        stopMotion();
-      }
-    });
+    if rclpy.ok():
+        rclpy.shutdown()
 
-    controlArea.addEventListener("pointercancel", e => {
-      if (e.pointerId === pointerId) {
-        stopMotion();
-      }
-    });
+    if spin_thread is not None:
+        spin_thread.join(timeout=1.0)
 
-    controlArea.addEventListener("lostpointercapture", () => {
-      if (active) {
-        stopMotion();
-      }
-    });
 
-    window.addEventListener("blur", () => {
-      if (active) {
-        stopMotion();
-      }
-    });
+app = FastAPI(lifespan=lifespan)
 
-    setInterval(() => {
-      if (!active) {
-        return;
-      }
 
-      const speedRatio = getActualSpeedRatio();
-      const xRel = getXrel();
-      const yRel = getYrel();
+def index_path() -> Path:
+    return (
+        Path(get_package_share_directory("web_teleop"))
+        / "static"
+        / "index.html"
+    )
 
-      const v = -yRel * speedRatio * currentVMax();
 
-      // Beim Rückwärtsfahren wird das Lenkvorzeichen invertiert,
-      // damit links und rechts fahrtrichtungsbezogen korrekt bleiben.
-      const steeringDirection = (v < 0.0) ? -1.0 : 1.0;
-      const w = -xRel * steeringDirection * speedRatio * currentWMax();
+@app.get("/")
+async def index() -> FileResponse:
+    return FileResponse(index_path())
 
-      send(v, w);
 
-      outEl.textContent =
-        `v=${v.toFixed(2)} m/s, w=${w.toFixed(2)} rad/s`;
-    }, SEND_PERIOD_MS);
-  </script>
-</body>
-</html>
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    await manager.connect(websocket)
+
+    node = ros_node
+    if node is not None:
+        await websocket.send_text(json.dumps(node.status_payload()))
+
+    try:
+        while True:
+            data = json.loads(await websocket.receive_text())
+
+            node = ros_node
+            if node is None:
+                continue
+
+            message_type = data.get("type", "cmd_vel")
+
+            if message_type == "cmd_vel":
+                node.publish_cmd_vel(
+                    float(data.get("v", 0.0)),
+                    float(data.get("w", 0.0)),
+                )
+
+            elif message_type == "select_source":
+                node.stop()
+                node.select_source(
+                    str(data.get("source", "")),
+                    websocket,
+                )
+
+            elif message_type == "request_selector_status":
+                await websocket.send_text(
+                    json.dumps(node.status_payload())
+                )
+
+    except (
+        WebSocketDisconnect,
+        json.JSONDecodeError,
+        ValueError,
+        TypeError,
+    ):
+        if node is not None:
+            node.stop()
+
+    finally:
+        await manager.disconnect(websocket)
+
+
+def main() -> None:
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info",
+    )
+
+
+if __name__ == "__main__":
+    main()
