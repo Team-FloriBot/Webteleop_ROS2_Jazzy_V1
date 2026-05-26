@@ -396,6 +396,7 @@
 
           <div class="header-actions">
             <p class="status err" id="wsStatus">Offline</p>
+
             <button
               class="icon-button"
               id="menuButton"
@@ -415,14 +416,16 @@
           <label class="slider-label" for="vMaxSlider">
             Maximale lineare Geschwindigkeit
           </label>
+
           <input
             id="vMaxSlider"
             type="range"
             min="0.05"
-            max="3.00"
+            max="1.00"
             step="0.05"
             value="0.25"
           />
+
           <span class="slider-value" id="vMaxValue">0.25 m/s</span>
         </div>
 
@@ -430,15 +433,17 @@
           <label class="slider-label" for="wMaxSlider">
             Maximale Winkelgeschwindigkeit
           </label>
+
           <input
             id="wMaxSlider"
             type="range"
             min="0.10"
-            max="6.00"
+            max="0.90"
             step="0.10"
-            value="3.00"
+            value="0.90"
           />
-          <span class="slider-value" id="wMaxValue">3.00 rad/s</span>
+
+          <span class="slider-value" id="wMaxValue">0.90 rad/s</span>
         </div>
 
         <p class="status out">
@@ -465,7 +470,9 @@
       <div class="top">
         <div class="title-row">
           <button class="back-button" id="backButton">‹ Zurück</button>
+
           <p class="title">Einstellungen</p>
+
           <span></span>
         </div>
 
@@ -490,6 +497,7 @@
                 <span class="source-name">Webteleop</span>
                 <span class="source-topic">/cmd_vel/webteleop</span>
               </span>
+
               <span class="active-tag">Aktiv</span>
             </button>
 
@@ -498,6 +506,7 @@
                 <span class="source-name">Task 1</span>
                 <span class="source-topic">/cmd_vel/task1</span>
               </span>
+
               <span class="active-tag">Aktiv</span>
             </button>
 
@@ -506,6 +515,7 @@
                 <span class="source-name">Task 2</span>
                 <span class="source-topic">/cmd_vel/task2</span>
               </span>
+
               <span class="active-tag">Aktiv</span>
             </button>
 
@@ -514,6 +524,7 @@
                 <span class="source-name">Task 3</span>
                 <span class="source-topic">/cmd_vel/task3</span>
               </span>
+
               <span class="active-tag">Aktiv</span>
             </button>
 
@@ -522,6 +533,7 @@
                 <span class="source-name">Task 4</span>
                 <span class="source-topic">/cmd_vel/task4</span>
               </span>
+
               <span class="active-tag">Aktiv</span>
             </button>
 
@@ -530,6 +542,7 @@
                 <span class="source-name">Task 5</span>
                 <span class="source-topic">/cmd_vel/task5</span>
               </span>
+
               <span class="active-tag">Aktiv</span>
             </button>
 
@@ -538,6 +551,7 @@
                 <span class="source-name">Stopp / keine Quelle</span>
                 <span class="source-topic">keine Weiterleitung</span>
               </span>
+
               <span class="active-tag">Aktiv</span>
             </button>
           </div>
@@ -811,6 +825,7 @@
 
     vMaxSlider.addEventListener("input", updateSliderLabels);
     wMaxSlider.addEventListener("input", updateSliderLabels);
+
     menuButton.addEventListener("click", showSettings);
     backButton.addEventListener("click", showTeleop);
 
