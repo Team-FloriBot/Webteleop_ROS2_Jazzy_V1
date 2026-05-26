@@ -13,7 +13,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             "cmd_vel_topic",
-            default_value="/cmd_vel",
+            default_value="/cmd_vel/webteleop",
             description="Topic for geometry_msgs/msg/Twist commands",
         ),
         DeclareLaunchArgument(
