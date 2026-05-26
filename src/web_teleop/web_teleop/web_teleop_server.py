@@ -87,10 +87,10 @@ class WebTeleopNode(Node):
             "/cmd_vel/webteleop",
         ).value
         self._max_linear = float(
-            self.declare_parameter("max_linear", 3.0).value
+            self.declare_parameter("max_linear", 1.0).value
         )
         self._max_angular = float(
-            self.declare_parameter("max_angular", 6.0).value
+            self.declare_parameter("max_angular", 0.9).value
         )
         self._timeout_s = float(
             self.declare_parameter("timeout_s", 0.3).value
