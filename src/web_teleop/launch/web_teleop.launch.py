@@ -18,12 +18,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "max_linear",
-            default_value="3.0",
+            default_value="1.0",
             description="Backend safety clamp for linear.x in m/s. Frontend slider must not exceed this value.",
         ),
         DeclareLaunchArgument(
             "max_angular",
-            default_value="6.0",
+            default_value="0.9",
             description="Backend safety clamp for angular.z in rad/s.",
         ),
         DeclareLaunchArgument(
