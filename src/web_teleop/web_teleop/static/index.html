@@ -384,6 +384,63 @@
       background: var(--err-bg);
       color: var(--err-fg);
     }
+
+
+    .task-input {
+      width: 100%;
+      min-height: 46px;
+      border: 1px solid #d4dbe5;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #ffffff;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .task-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .task-button {
+      min-height: 46px;
+      border: 1px solid #d4dbe5;
+      border-radius: 10px;
+      background: #ffffff;
+      padding: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .task-button.primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #ffffff;
+    }
+
+    .task-button.danger {
+      border-color: #d02f3a;
+      color: #9c1823;
+    }
+
+    .task-button:disabled,
+    .task-input:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+    }
+
+    .task-data {
+      display: grid;
+      gap: 5px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .task-data strong {
+      color: #17212b;
+    }
   </style>
 </head>
 
@@ -562,6 +619,62 @@
             role="status"
           ></div>
         </div>
+
+        <div class="settings-card">
+          <h2>Task 1 – Maisnavigation</h2>
+
+          <p>
+            Vor dem Start muss die Fahrquelle „Task 1“ aktiv und ein
+            Fahrmuster gesetzt sein. Starten und Unterbrechen erfordern
+            jeweils eine ausdrückliche Bestätigung.
+          </p>
+
+          <label for="patternInput">Fahrmuster</label>
+          <input
+            class="task-input"
+            id="patternInput"
+            type="text"
+            value="1L 2R"
+            placeholder="z. B. 1L 2R 1L"
+            autocomplete="off"
+            spellcheck="false"
+          />
+
+          <button class="task-button" id="setPatternButton">
+            Fahrmuster übernehmen
+          </button>
+
+          <div class="task-actions">
+            <button class="task-button primary" id="startTaskButton" disabled>
+              Starten
+            </button>
+            <button class="task-button" id="pauseTaskButton" disabled>
+              Unterbrechen
+            </button>
+            <button class="task-button" id="resumeTaskButton" disabled>
+              Fortsetzen
+            </button>
+            <button class="task-button danger" id="stopTaskButton" disabled>
+              Beenden
+            </button>
+          </div>
+
+          <div class="source-banner">
+            Missionsstatus:
+            <strong id="missionState">nicht verfügbar</strong>
+          </div>
+
+          <div class="task-data">
+            <span>Aktives Muster: <strong id="activePattern">–</strong></span>
+            <span>Aktueller Schritt: <strong id="activeStep">–</strong></span>
+          </div>
+
+          <div
+            class="selection-feedback"
+            id="taskFeedback"
+            role="status"
+          ></div>
+        </div>
       </div>
     </section>
   </main>
@@ -614,6 +727,16 @@
     const controlDisabled = document.getElementById("controlDisabled");
     const joystick = document.getElementById("joystick");
     const stick = document.getElementById("stick");
+    const patternInput = document.getElementById("patternInput");
+    const setPatternButton = document.getElementById("setPatternButton");
+    const startTaskButton = document.getElementById("startTaskButton");
+    const pauseTaskButton = document.getElementById("pauseTaskButton");
+    const resumeTaskButton = document.getElementById("resumeTaskButton");
+    const stopTaskButton = document.getElementById("stopTaskButton");
+    const missionState = document.getElementById("missionState");
+    const activePattern = document.getElementById("activePattern");
+    const activeStep = document.getElementById("activeStep");
+    const taskFeedback = document.getElementById("taskFeedback");
 
     const PAD_RADIUS = 100.0;
     const STICK_RADIUS = 34.0;
@@ -661,6 +784,41 @@
         `selection-feedback visible ${success ? "success" : "error"}`;
     }
 
+    function showTaskFeedback(message, success) {
+      taskFeedback.textContent = message;
+      taskFeedback.className =
+        `selection-feedback visible ${success ? "success" : "error"}`;
+    }
+
+    function sendTaskMessage(message) {
+      if (!connected || websocket?.readyState !== WebSocket.OPEN) {
+        showTaskFeedback("Keine Verbindung zum Webteleop-Server.", false);
+        return false;
+      }
+
+      websocket.send(JSON.stringify(message));
+      return true;
+    }
+
+    function updateNavigationStatus(message) {
+      missionState.textContent = message.mission_state || "nicht verfügbar";
+      activePattern.textContent = message.active_pattern || "–";
+
+      if (message.total_steps > 0) {
+        activeStep.textContent =
+          `${message.active_step_index}/${message.total_steps}: ${message.active_step}`;
+      } else {
+        activeStep.textContent = "–";
+      }
+
+      setPatternButton.disabled = !message.can_set_pattern;
+      patternInput.disabled = !message.can_set_pattern;
+      startTaskButton.disabled = !message.can_start || activeSource !== "task1";
+      pauseTaskButton.disabled = !message.can_pause;
+      resumeTaskButton.disabled = !message.can_resume;
+      stopTaskButton.disabled = !message.can_abort;
+    }
+
     function updateActiveSource(source) {
       activeSource = source;
 
@@ -698,6 +856,9 @@
         websocket.send(
           JSON.stringify({ type: "request_selector_status" })
         );
+        websocket.send(
+          JSON.stringify({ type: "request_navigation_status" })
+        );
       };
 
       websocket.onmessage = event => {
@@ -710,6 +871,21 @@
         if (message.type === "selection_result") {
           updateActiveSource(message.active_source);
           showFeedback(message.message, message.success);
+          sendTaskMessage({ type: "request_navigation_status" });
+        }
+
+        if (message.type === "navigation_status") {
+          if (message.success) {
+            updateNavigationStatus(message);
+          } else {
+            missionState.textContent = "nicht erreichbar";
+            showTaskFeedback(message.message, false);
+          }
+        }
+
+        if (message.type === "task_result") {
+          showTaskFeedback(message.message, message.success);
+          sendTaskMessage({ type: "request_navigation_status" });
         }
       };
 
@@ -829,6 +1005,67 @@
     menuButton.addEventListener("click", showSettings);
     backButton.addEventListener("click", showTeleop);
 
+    setPatternButton.addEventListener("click", () => {
+      sendTaskMessage({
+        type: "set_navigation_pattern",
+        pattern: patternInput.value.trim()
+      });
+    });
+
+    startTaskButton.addEventListener("click", () => {
+      if (activeSource !== "task1") {
+        showTaskFeedback(
+          "Vor dem Start muss „Task 1“ als Fahrquelle ausgewählt sein.",
+          false
+        );
+        return;
+      }
+
+      const accepted = window.confirm(
+        `Task 1 wirklich starten?\n\nFahrmuster: ${patternInput.value.trim() || "nicht gesetzt"}`
+      );
+      if (!accepted) {
+        return;
+      }
+
+      sendTaskMessage({
+        type: "navigation_command",
+        command: "start",
+        confirmed: true
+      });
+    });
+
+    pauseTaskButton.addEventListener("click", () => {
+      const accepted = window.confirm(
+        "Task 1 wirklich unterbrechen?\n\nDer Roboter erhält unmittelbar einen Stoppbefehl."
+      );
+      if (!accepted) {
+        return;
+      }
+
+      sendTaskMessage({
+        type: "navigation_command",
+        command: "pause",
+        confirmed: true
+      });
+    });
+
+    resumeTaskButton.addEventListener("click", () => {
+      sendTaskMessage({
+        type: "navigation_command",
+        command: "resume",
+        confirmed: false
+      });
+    });
+
+    stopTaskButton.addEventListener("click", () => {
+      sendTaskMessage({
+        type: "navigation_command",
+        command: "stop",
+        confirmed: false
+      });
+    });
+
     sourceButtons.forEach(button => {
       button.addEventListener("click", () => {
         const source = button.dataset.source;
@@ -933,6 +1170,15 @@
           stopMotion();
         }
       }
+    );
+
+    setInterval(
+      () => {
+        if (connected) {
+          sendTaskMessage({ type: "request_navigation_status" });
+        }
+      },
+      750
     );
 
     setInterval(
