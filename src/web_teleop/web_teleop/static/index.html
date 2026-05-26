@@ -421,11 +421,13 @@
     const xRel = getXrel();
     const yRel = getYrel();
 
-    // APK-Logik für kartesische Steuerung:
+    // Kartesische Steuerung:
     // linear_x  = -Yrel * SpeedRatio * max_velocity_linear
-    // angular_z = -Xrel * SpeedRatio * max_velocity_angular
+    // Bei Rueckwaertsfahrt wird das Lenkvorzeichen invertiert, damit
+    // eine Stickauslenkung nach links/rechts aus Fahrersicht konsistent bleibt.
     const v = -yRel * speedRatio * currentVMax();
-    const w = -xRel * speedRatio * currentWMax();
+    const steeringDirection = (v < 0.0) ? -1.0 : 1.0;
+    const w = -xRel * steeringDirection * speedRatio * currentWMax();
 
     send(v, w);
     outEl.textContent = `v=${v.toFixed(2)} m/s, w=${w.toFixed(2)} rad/s`;
