@@ -13,6 +13,7 @@ from typing import Any
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from cmd_vel_selector.srv import SelectSource
+from fre2026_tasks_interfaces.srv import GetNavigationStatus, SetNavigationPattern
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from geometry_msgs.msg import Twist
@@ -20,6 +21,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 import uvicorn
 
 
@@ -116,6 +118,30 @@ class WebTeleopNode(Node):
         self._select_client = self.create_client(
             SelectSource,
             "/cmd_vel_selector/select_source",
+        )
+        self._set_pattern_client = self.create_client(
+            SetNavigationPattern,
+            "/set_navigation_pattern",
+        )
+        self._get_navigation_status_client = self.create_client(
+            GetNavigationStatus,
+            "/get_navigation_status",
+        )
+        self._start_navigation_client = self.create_client(
+            Trigger,
+            "/start_navigation",
+        )
+        self._stop_navigation_client = self.create_client(
+            Trigger,
+            "/stop_navigation",
+        )
+        self._pause_navigation_client = self.create_client(
+            Trigger,
+            "/pause_navigation",
+        )
+        self._resume_navigation_client = self.create_client(
+            Trigger,
+            "/resume_navigation",
         )
 
         self._watchdog = self.create_timer(
@@ -223,6 +249,173 @@ class WebTeleopNode(Node):
                     "success": False,
                     "message": f"Serviceaufruf fehlgeschlagen: {exc}",
                     "active_source": self._active_source,
+                }
+
+            self._schedule_send(websocket, payload)
+
+        future.add_done_callback(finish)
+
+    @staticmethod
+    def _service_ready(client: Any) -> bool:
+        if not client.service_is_ready():
+            client.wait_for_service(timeout_sec=0.2)
+        return bool(client.service_is_ready())
+
+    def set_navigation_pattern(self, pattern: str, websocket: WebSocket) -> None:
+        if not self._service_ready(self._set_pattern_client):
+            self._schedule_send(
+                websocket,
+                {
+                    "type": "task_result",
+                    "command": "set_pattern",
+                    "success": False,
+                    "message": "SetNavigationPattern-Service ist nicht erreichbar.",
+                },
+            )
+            return
+
+        request = SetNavigationPattern.Request()
+        request.pattern = pattern
+        future = self._set_pattern_client.call_async(request)
+
+        def finish(done_future: Any) -> None:
+            try:
+                response = done_future.result()
+                payload = {
+                    "type": "task_result",
+                    "command": "set_pattern",
+                    "success": bool(response.success),
+                    "message": response.message,
+                    "accepted_pattern": response.accepted_pattern,
+                    "mission_state": response.mission_state,
+                    "can_start": bool(response.can_start),
+                    "can_resume": bool(response.can_resume),
+                }
+            except Exception as exc:  # pragma: no cover
+                payload = {
+                    "type": "task_result",
+                    "command": "set_pattern",
+                    "success": False,
+                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
+                }
+
+            self._schedule_send(websocket, payload)
+
+        future.add_done_callback(finish)
+
+    def request_navigation_status(self, websocket: WebSocket) -> None:
+        if not self._service_ready(self._get_navigation_status_client):
+            self._schedule_send(
+                websocket,
+                {
+                    "type": "navigation_status",
+                    "success": False,
+                    "message": "GetNavigationStatus-Service ist nicht erreichbar.",
+                },
+            )
+            return
+
+        future = self._get_navigation_status_client.call_async(
+            GetNavigationStatus.Request()
+        )
+
+        def finish(done_future: Any) -> None:
+            try:
+                response = done_future.result()
+                payload = {
+                    "type": "navigation_status",
+                    "success": bool(response.success),
+                    "message": response.message,
+                    "mission_state": response.mission_state,
+                    "pattern_loaded": bool(response.pattern_loaded),
+                    "active_pattern": response.active_pattern,
+                    "active_step_index": int(response.active_step_index),
+                    "total_steps": int(response.total_steps),
+                    "active_step": response.active_step,
+                    "can_set_pattern": bool(response.can_set_pattern),
+                    "can_start": bool(response.can_start),
+                    "can_pause": bool(response.can_pause),
+                    "can_resume": bool(response.can_resume),
+                    "can_abort": bool(response.can_abort),
+                }
+            except Exception as exc:  # pragma: no cover
+                payload = {
+                    "type": "navigation_status",
+                    "success": False,
+                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
+                }
+
+            self._schedule_send(websocket, payload)
+
+        future.add_done_callback(finish)
+
+    def trigger_navigation(
+        self,
+        command: str,
+        confirmed: bool,
+        websocket: WebSocket,
+    ) -> None:
+        confirmation_required = command in {"start", "pause"}
+        if confirmation_required and not confirmed:
+            self._schedule_send(
+                websocket,
+                {
+                    "type": "task_result",
+                    "command": command,
+                    "success": False,
+                    "message": "Befehl verworfen: explizite Bestätigung fehlt.",
+                },
+            )
+            return
+
+        clients = {
+            "start": self._start_navigation_client,
+            "stop": self._stop_navigation_client,
+            "pause": self._pause_navigation_client,
+            "resume": self._resume_navigation_client,
+        }
+        client = clients.get(command)
+        if client is None:
+            self._schedule_send(
+                websocket,
+                {
+                    "type": "task_result",
+                    "command": command,
+                    "success": False,
+                    "message": "Unbekannter Navigationsbefehl.",
+                },
+            )
+            return
+
+        if not self._service_ready(client):
+            self._schedule_send(
+                websocket,
+                {
+                    "type": "task_result",
+                    "command": command,
+                    "success": False,
+                    "message": f"Navigation-Service '{command}' ist nicht erreichbar.",
+                },
+            )
+            return
+
+        future = client.call_async(Trigger.Request())
+
+        def finish(done_future: Any) -> None:
+            try:
+                response = done_future.result()
+                payload = {
+                    "type": "task_result",
+                    "command": command,
+                    "success": bool(response.success),
+                    "message": response.message,
+                }
+            except Exception as exc:  # pragma: no cover
+                payload = {
+                    "type": "task_result",
+                    "command": command,
+                    "success": False,
+                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
                 }
 
             self._schedule_send(websocket, payload)
@@ -351,6 +544,22 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             elif message_type == "request_selector_status":
                 await websocket.send_text(
                     json.dumps(node.status_payload())
+                )
+
+            elif message_type == "set_navigation_pattern":
+                node.set_navigation_pattern(
+                    str(data.get("pattern", "")),
+                    websocket,
+                )
+
+            elif message_type == "request_navigation_status":
+                node.request_navigation_status(websocket)
+
+            elif message_type == "navigation_command":
+                node.trigger_navigation(
+                    str(data.get("command", "")),
+                    bool(data.get("confirmed", False)),
+                    websocket,
                 )
 
     except (
