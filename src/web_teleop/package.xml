@@ -4,16 +4,18 @@
   <version>0.0.1</version>
   <description>Web Teleop publishing Twist to /cmd_vel</description>
 
-  <maintainer email="you@example.com">you</maintainer>
+  <maintainer email="tzimmerman@stud.hs-heilbronn.de">you</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
 
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>cmd_vel_selector</depend>
+  <exec_depend>ament_index_python</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>
   </export>
 </package>
-
