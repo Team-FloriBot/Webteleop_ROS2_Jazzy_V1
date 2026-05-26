@@ -13,7 +13,7 @@ from typing import Any
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from cmd_vel_selector.srv import SelectSource
-from fre2026_tasks_interfaces.srv import GetNavigationStatus, SetNavigationPattern
+from fre2026_task_interfaces.srv import GetNavigationStatus, SetNavigationPattern
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from geometry_msgs.msg import Twist
