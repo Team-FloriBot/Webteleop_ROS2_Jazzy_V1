@@ -1,588 +1,168 @@
-"""ROS 2 backed WebTeleop server with cmd_vel source selection."""
-
-from __future__ import annotations
-
 import asyncio
 import json
-import threading
+import signal
 import time
-from contextlib import asynccontextmanager
+import os
 from pathlib import Path
-from typing import Any
 
 import rclpy
-from ament_index_python.packages import get_package_share_directory
-from cmd_vel_selector.srv import SelectSource
-from fre2026_task_interfaces.srv import GetNavigationStatus, SetNavigationPattern
+from rclpy.node import Node
+from geometry_msgs.msg import Twist
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from geometry_msgs.msg import Twist
-from rclpy.executors import MultiThreadedExecutor
-from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import String
-from std_srvs.srv import Trigger
-import uvicorn
+from fastapi.staticfiles import StaticFiles
 
+from ament_index_python.packages import get_package_share_directory
 
-VALID_SOURCES = ("none", "webteleop", "task1", "task2", "task3", "task4", "task5")
-SOURCE_LABELS = {
-    "none": "Stopp / keine Quelle",
-    "webteleop": "Webteleop",
-    "task1": "Task 1",
-    "task2": "Task 2",
-    "task3": "Task 3",
-    "task4": "Task 4",
-    "task5": "Task 5",
-}
 
+class CmdVelBridge(Node):
+    def __init__(self):
+        super().__init__("cmdvel_web_bridge")
 
-class ConnectionManager:
-    def __init__(self) -> None:
-        self._connections: set[WebSocket] = set()
-        self._lock = asyncio.Lock()
+        self.declare_parameter("cmd_vel_topic", "/cmd_vel")
+        self.declare_parameter("max_linear", 3.00)   # m/s
+        self.declare_parameter("max_angular", 0.9)   # rad/s
+        self.declare_parameter("timeout_s", 0.3)     # s (Deadman)
 
-    async def connect(self, websocket: WebSocket) -> None:
-        await websocket.accept()
-        async with self._lock:
-            self._connections.add(websocket)
+        topic = self.get_parameter("cmd_vel_topic").get_parameter_value().string_value
+        self.max_linear = float(self.get_parameter("max_linear").value)
+        self.max_angular = float(self.get_parameter("max_angular").value)
+        self.timeout_s = float(self.get_parameter("timeout_s").value)
 
-    async def disconnect(self, websocket: WebSocket) -> None:
-        async with self._lock:
-            self._connections.discard(websocket)
+        self.publisher_ = self.create_publisher(Twist, topic, 10)
 
-    async def broadcast(self, message: dict[str, Any]) -> None:
-        dead: list[WebSocket] = []
-        payload = json.dumps(message)
+        self._last_rx = time.monotonic()
+        self._v = 0.0
+        self._w = 0.0
 
-        async with self._lock:
-            connections = tuple(self._connections)
+        # 20 Hz
+        self.create_timer(0.05, self._timer_cb)
 
-        for websocket in connections:
-            try:
-                await websocket.send_text(payload)
-            except Exception:
-                dead.append(websocket)
+    def update(self, v: float, w: float):
+        v = max(-self.max_linear, min(self.max_linear, v))
+        w = max(-self.max_angular, min(self.max_angular, w))
+        self._v = v
+        self._w = w
+        self._last_rx = time.monotonic()
 
-        if dead:
-            async with self._lock:
-                for websocket in dead:
-                    self._connections.discard(websocket)
+    def _timer_cb(self):
+        msg = Twist()
+        if (time.monotonic() - self._last_rx) > self.timeout_s:
+            msg.linear.x = 0.0
+            msg.angular.z = 0.0
+        else:
+            msg.linear.x = float(self._v)
+            msg.angular.z = float(self._w)
+        self.publisher_.publish(msg)
 
 
-class WebTeleopNode(Node):
-    def __init__(
-        self,
-        event_loop: asyncio.AbstractEventLoop,
-        manager: ConnectionManager,
-    ) -> None:
-        super().__init__("web_teleop_server")
-
-        self._loop = event_loop
-        self._manager = manager
-        self._active_source = "unknown"
-        self._last_cmd_time = time.monotonic()
-        self._moving_command_active = False
-
-        self._cmd_vel_topic = self.declare_parameter(
-            "cmd_vel_topic",
-            "/cmd_vel/webteleop",
-        ).value
-        self._max_linear = float(
-            self.declare_parameter("max_linear", 1.0).value
-        )
-        self._max_angular = float(
-            self.declare_parameter("max_angular", 0.9).value
-        )
-        self._timeout_s = float(
-            self.declare_parameter("timeout_s", 0.3).value
-        )
-
-        self._publisher = self.create_publisher(
-            Twist,
-            self._cmd_vel_topic,
-            10,
-        )
-
-        selector_qos = QoSProfile(depth=1)
-        selector_qos.reliability = ReliabilityPolicy.RELIABLE
-        selector_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
-
-        self._status_subscription = self.create_subscription(
-            String,
-            "/cmd_vel_selector/active_source",
-            self._active_source_callback,
-            selector_qos,
-        )
-
-        self._select_client = self.create_client(
-            SelectSource,
-            "/cmd_vel_selector/select_source",
-        )
-        self._set_pattern_client = self.create_client(
-            SetNavigationPattern,
-            "/set_navigation_pattern",
-        )
-        self._get_navigation_status_client = self.create_client(
-            GetNavigationStatus,
-            "/get_navigation_status",
-        )
-        self._start_navigation_client = self.create_client(
-            Trigger,
-            "/start_navigation",
-        )
-        self._stop_navigation_client = self.create_client(
-            Trigger,
-            "/stop_navigation",
-        )
-        self._pause_navigation_client = self.create_client(
-            Trigger,
-            "/pause_navigation",
-        )
-        self._resume_navigation_client = self.create_client(
-            Trigger,
-            "/resume_navigation",
-        )
-
-        self._watchdog = self.create_timer(
-            0.05,
-            self._watchdog_callback,
-        )
-
-        self.get_logger().info(
-            f"Webteleop publiziert Fahrbefehle auf '{self._cmd_vel_topic}'."
-        )
-
-    @property
-    def active_source(self) -> str:
-        return self._active_source
-
-    def status_payload(self) -> dict[str, Any]:
-        return {
-            "type": "selector_status",
-            "active_source": self._active_source,
-            "active_source_label": SOURCE_LABELS.get(
-                self._active_source,
-                self._active_source,
-            ),
-            "valid_sources": [
-                {
-                    "id": source,
-                    "label": SOURCE_LABELS[source],
-                }
-                for source in VALID_SOURCES
-            ],
-        }
-
-    def publish_cmd_vel(self, linear_x: float, angular_z: float) -> None:
-        linear_x = max(
-            -self._max_linear,
-            min(self._max_linear, float(linear_x)),
-        )
-        angular_z = max(
-            -self._max_angular,
-            min(self._max_angular, float(angular_z)),
-        )
-
-        message = Twist()
-        message.linear.x = linear_x
-        message.angular.z = angular_z
-
-        self._publisher.publish(message)
-
-        self._last_cmd_time = time.monotonic()
-        self._moving_command_active = linear_x != 0.0 or angular_z != 0.0
-
-    def stop(self) -> None:
-        self.publish_cmd_vel(0.0, 0.0)
-        self._moving_command_active = False
-
-    def select_source(self, source: str, websocket: WebSocket) -> None:
-        if source not in VALID_SOURCES:
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "selection_result",
-                    "success": False,
-                    "message": "Ungültige Quelle.",
-                    "active_source": self._active_source,
-                },
-            )
-            return
-
-        if not self._select_client.service_is_ready():
-            self._select_client.wait_for_service(timeout_sec=0.2)
-
-        if not self._select_client.service_is_ready():
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "selection_result",
-                    "success": False,
-                    "message": "cmd_vel_selector-Service ist nicht erreichbar.",
-                    "active_source": self._active_source,
-                },
-            )
-            return
-
-        request = SelectSource.Request()
-        request.source = source
-
-        future = self._select_client.call_async(request)
-
-        def finish(done_future: Any) -> None:
-            try:
-                response = done_future.result()
-                payload = {
-                    "type": "selection_result",
-                    "success": bool(response.success),
-                    "message": response.message,
-                    "active_source": response.active_source,
-                    "active_source_label": SOURCE_LABELS.get(
-                        response.active_source,
-                        response.active_source,
-                    ),
-                }
-            except Exception as exc:  # pragma: no cover
-                payload = {
-                    "type": "selection_result",
-                    "success": False,
-                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
-                    "active_source": self._active_source,
-                }
-
-            self._schedule_send(websocket, payload)
-
-        future.add_done_callback(finish)
-
-    @staticmethod
-    def _service_ready(client: Any) -> bool:
-        if not client.service_is_ready():
-            client.wait_for_service(timeout_sec=0.2)
-        return bool(client.service_is_ready())
-
-    def set_navigation_pattern(self, pattern: str, websocket: WebSocket) -> None:
-        if not self._service_ready(self._set_pattern_client):
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "task_result",
-                    "command": "set_pattern",
-                    "success": False,
-                    "message": "SetNavigationPattern-Service ist nicht erreichbar.",
-                },
-            )
-            return
-
-        request = SetNavigationPattern.Request()
-        request.pattern = pattern
-        future = self._set_pattern_client.call_async(request)
-
-        def finish(done_future: Any) -> None:
-            try:
-                response = done_future.result()
-                payload = {
-                    "type": "task_result",
-                    "command": "set_pattern",
-                    "success": bool(response.success),
-                    "message": response.message,
-                    "accepted_pattern": response.accepted_pattern,
-                    "mission_state": response.mission_state,
-                    "can_start": bool(response.can_start),
-                    "can_resume": bool(response.can_resume),
-                }
-            except Exception as exc:  # pragma: no cover
-                payload = {
-                    "type": "task_result",
-                    "command": "set_pattern",
-                    "success": False,
-                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
-                }
-
-            self._schedule_send(websocket, payload)
-
-        future.add_done_callback(finish)
-
-    def request_navigation_status(self, websocket: WebSocket) -> None:
-        if not self._service_ready(self._get_navigation_status_client):
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "navigation_status",
-                    "success": False,
-                    "message": "GetNavigationStatus-Service ist nicht erreichbar.",
-                },
-            )
-            return
-
-        future = self._get_navigation_status_client.call_async(
-            GetNavigationStatus.Request()
-        )
-
-        def finish(done_future: Any) -> None:
-            try:
-                response = done_future.result()
-                payload = {
-                    "type": "navigation_status",
-                    "success": bool(response.success),
-                    "message": response.message,
-                    "mission_state": response.mission_state,
-                    "pattern_loaded": bool(response.pattern_loaded),
-                    "active_pattern": response.active_pattern,
-                    "active_step_index": int(response.active_step_index),
-                    "total_steps": int(response.total_steps),
-                    "active_step": response.active_step,
-                    "can_set_pattern": bool(response.can_set_pattern),
-                    "can_start": bool(response.can_start),
-                    "can_pause": bool(response.can_pause),
-                    "can_resume": bool(response.can_resume),
-                    "can_abort": bool(response.can_abort),
-                }
-            except Exception as exc:  # pragma: no cover
-                payload = {
-                    "type": "navigation_status",
-                    "success": False,
-                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
-                }
-
-            self._schedule_send(websocket, payload)
-
-        future.add_done_callback(finish)
-
-    def trigger_navigation(
-        self,
-        command: str,
-        confirmed: bool,
-        websocket: WebSocket,
-    ) -> None:
-        confirmation_required = command in {"start", "pause"}
-        if confirmation_required and not confirmed:
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "task_result",
-                    "command": command,
-                    "success": False,
-                    "message": "Befehl verworfen: explizite Bestätigung fehlt.",
-                },
-            )
-            return
-
-        clients = {
-            "start": self._start_navigation_client,
-            "stop": self._stop_navigation_client,
-            "pause": self._pause_navigation_client,
-            "resume": self._resume_navigation_client,
-        }
-        client = clients.get(command)
-        if client is None:
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "task_result",
-                    "command": command,
-                    "success": False,
-                    "message": "Unbekannter Navigationsbefehl.",
-                },
-            )
-            return
-
-        if not self._service_ready(client):
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "task_result",
-                    "command": command,
-                    "success": False,
-                    "message": f"Navigation-Service '{command}' ist nicht erreichbar.",
-                },
-            )
-            return
-
-        future = client.call_async(Trigger.Request())
-
-        def finish(done_future: Any) -> None:
-            try:
-                response = done_future.result()
-                payload = {
-                    "type": "task_result",
-                    "command": command,
-                    "success": bool(response.success),
-                    "message": response.message,
-                }
-            except Exception as exc:  # pragma: no cover
-                payload = {
-                    "type": "task_result",
-                    "command": command,
-                    "success": False,
-                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
-                }
-
-            self._schedule_send(websocket, payload)
-
-        future.add_done_callback(finish)
-
-    def _active_source_callback(self, message: String) -> None:
-        self._active_source = message.data
-        self._schedule_broadcast(self.status_payload())
-
-    def _watchdog_callback(self) -> None:
-        if (
-            self._moving_command_active
-            and time.monotonic() - self._last_cmd_time > self._timeout_s
-        ):
-            self.stop()
-
-    def _schedule_broadcast(self, payload: dict[str, Any]) -> None:
-        asyncio.run_coroutine_threadsafe(
-            self._manager.broadcast(payload),
-            self._loop,
-        )
-
-    def _schedule_send(
-        self,
-        websocket: WebSocket,
-        payload: dict[str, Any],
-    ) -> None:
-        asyncio.run_coroutine_threadsafe(
-            websocket.send_text(json.dumps(payload)),
-            self._loop,
-        )
-
-
-manager = ConnectionManager()
-ros_node: WebTeleopNode | None = None
-executor: MultiThreadedExecutor | None = None
-spin_thread: threading.Thread | None = None
-
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    global ros_node, executor, spin_thread
-
-    rclpy.init(args=None)
-
-    ros_node = WebTeleopNode(
-        asyncio.get_running_loop(),
-        manager,
-    )
-
-    executor = MultiThreadedExecutor(num_threads=2)
-    executor.add_node(ros_node)
-
-    spin_thread = threading.Thread(
-        target=executor.spin,
-        daemon=True,
-    )
-    spin_thread.start()
-
-    yield
-
-    if ros_node is not None:
-        ros_node.stop()
-
-    if executor is not None:
-        executor.shutdown()
-
-    if ros_node is not None:
-        ros_node.destroy_node()
-
-    if rclpy.ok():
-        rclpy.shutdown()
-
-    if spin_thread is not None:
-        spin_thread.join(timeout=1.0)
-
-
-app = FastAPI(lifespan=lifespan)
-
-
-def index_path() -> Path:
-    return (
-        Path(get_package_share_directory("web_teleop"))
-        / "static"
-        / "index.html"
-    )
-
-
-@app.get("/")
-async def index() -> FileResponse:
-    return FileResponse(index_path())
-
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket) -> None:
-    await manager.connect(websocket)
-
-    node = ros_node
-    if node is not None:
-        await websocket.send_text(json.dumps(node.status_payload()))
-
+async def ros_spin(node: Node, stop_event: asyncio.Event):
     try:
-        while True:
-            data = json.loads(await websocket.receive_text())
+        while rclpy.ok() and not stop_event.is_set():
+            rclpy.spin_once(node, timeout_sec=0.0)
+            await asyncio.sleep(0.001)
+    except asyncio.CancelledError:
+        pass
 
-            node = ros_node
-            if node is None:
-                continue
 
-            message_type = data.get("type", "cmd_vel")
+def build_app(bridge: CmdVelBridge) -> FastAPI:
+    # 🔧 ROS2-konformer Pfad zum share-Verzeichnis
+    pkg_share = Path(get_package_share_directory("web_teleop"))
+    static_dir = pkg_share / "static"
+    index_file = static_dir / "index.html"
 
-            if message_type == "cmd_vel":
-                node.publish_cmd_vel(
-                    float(data.get("v", 0.0)),
-                    float(data.get("w", 0.0)),
+    if not static_dir.is_dir():
+        raise RuntimeError(f"Static directory not found: {static_dir}")
+    if not index_file.is_file():
+        raise RuntimeError(f"Index file not found: {index_file}")
+
+    app = FastAPI()
+
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(static_dir)),
+        name="static",
+    )
+
+    @app.get("/")
+    def index():
+        return FileResponse(str(index_file))
+
+    @app.websocket("/ws")
+    async def websocket_endpoint(ws: WebSocket):
+        await ws.accept()
+        try:
+            while True:
+                data = await ws.receive_text()
+                obj = json.loads(data)
+                bridge.update(
+                    float(obj.get("v", 0.0)),
+                    float(obj.get("w", 0.0)),
                 )
+                await ws.send_text('{"ok": true}')
+        except (WebSocketDisconnect, json.JSONDecodeError, ValueError):
+            return
 
-            elif message_type == "select_source":
-                node.stop()
-                node.select_source(
-                    str(data.get("source", "")),
-                    websocket,
-                )
-
-            elif message_type == "request_selector_status":
-                await websocket.send_text(
-                    json.dumps(node.status_payload())
-                )
-
-            elif message_type == "set_navigation_pattern":
-                node.set_navigation_pattern(
-                    str(data.get("pattern", "")),
-                    websocket,
-                )
-
-            elif message_type == "request_navigation_status":
-                node.request_navigation_status(websocket)
-
-            elif message_type == "navigation_command":
-                node.trigger_navigation(
-                    str(data.get("command", "")),
-                    bool(data.get("confirmed", False)),
-                    websocket,
-                )
-
-    except (
-        WebSocketDisconnect,
-        json.JSONDecodeError,
-        ValueError,
-        TypeError,
-    ):
-        if node is not None:
-            node.stop()
-
-    finally:
-        await manager.disconnect(websocket)
+    return app
 
 
-def main() -> None:
-    uvicorn.run(
-        app,
+async def main_async():
+    import uvicorn
+
+    rclpy.init()
+    bridge = CmdVelBridge()
+    app = build_app(bridge)
+
+    config = uvicorn.Config(
+        app=app,
         host="0.0.0.0",
         port=8000,
         log_level="info",
     )
+    server = uvicorn.Server(config)
+
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def request_shutdown():
+        stop_event.set()
+        server.should_exit = True
+
+    try:
+        loop.add_signal_handler(signal.SIGINT, request_shutdown)
+        loop.add_signal_handler(signal.SIGTERM, request_shutdown)
+    except NotImplementedError:
+        signal.signal(signal.SIGINT, lambda *_: request_shutdown())
+        signal.signal(signal.SIGTERM, lambda *_: request_shutdown())
+
+    ros_task = asyncio.create_task(ros_spin(bridge, stop_event))
+    web_task = asyncio.create_task(server.serve())
+
+    try:
+        done, pending = await asyncio.wait(
+            {ros_task, web_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        request_shutdown()
+
+        for t in pending:
+            t.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+
+    finally:
+        try:
+            bridge.destroy_node()
+        except Exception:
+            pass
+
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
 
-if __name__ == "__main__":
-    main()
+def main():
+    asyncio.run(main_async())
