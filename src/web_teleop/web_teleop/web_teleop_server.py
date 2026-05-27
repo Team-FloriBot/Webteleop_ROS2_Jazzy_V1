@@ -81,6 +81,9 @@ class WebTeleopNode(Node):
         self._loop = event_loop
         self._manager = manager
         self._active_source = "unknown"
+        self._command_lock = threading.Lock()
+        self._latest_linear_x = 0.0
+        self._latest_angular_z = 0.0
         self._last_cmd_time = time.monotonic()
         self._moving_command_active = False
 
@@ -144,13 +147,13 @@ class WebTeleopNode(Node):
             "/resume_navigation",
         )
 
-        self._watchdog = self.create_timer(
+        self._publish_timer = self.create_timer(
             0.05,
-            self._watchdog_callback,
+            self._publish_timer_callback,
         )
 
         self.get_logger().info(
-            f"Webteleop publiziert Fahrbefehle auf '{self._cmd_vel_topic}'."
+            f"Webteleop publiziert Fahrbefehle mit 20 Hz auf '{self._cmd_vel_topic}'."
         )
 
     @property
@@ -174,7 +177,7 @@ class WebTeleopNode(Node):
             ],
         }
 
-    def publish_cmd_vel(self, linear_x: float, angular_z: float) -> None:
+    def update_cmd_vel(self, linear_x: float, angular_z: float) -> None:
         linear_x = max(
             -self._max_linear,
             min(self._max_linear, float(linear_x)),
@@ -184,18 +187,27 @@ class WebTeleopNode(Node):
             min(self._max_angular, float(angular_z)),
         )
 
+        with self._command_lock:
+            self._latest_linear_x = linear_x
+            self._latest_angular_z = angular_z
+            self._last_cmd_time = time.monotonic()
+            self._moving_command_active = linear_x != 0.0 or angular_z != 0.0
+
+    def _publish_twist(self, linear_x: float, angular_z: float) -> None:
         message = Twist()
         message.linear.x = linear_x
         message.angular.z = angular_z
-
         self._publisher.publish(message)
 
-        self._last_cmd_time = time.monotonic()
-        self._moving_command_active = linear_x != 0.0 or angular_z != 0.0
-
     def stop(self) -> None:
-        self.publish_cmd_vel(0.0, 0.0)
-        self._moving_command_active = False
+        with self._command_lock:
+            self._latest_linear_x = 0.0
+            self._latest_angular_z = 0.0
+            self._last_cmd_time = time.monotonic()
+            self._moving_command_active = False
+
+        # Publish the stop immediately; the 20 Hz timer then keeps publishing zero.
+        self._publish_twist(0.0, 0.0)
 
     def select_source(self, source: str, websocket: WebSocket) -> None:
         if source not in VALID_SOURCES:
@@ -426,12 +438,20 @@ class WebTeleopNode(Node):
         self._active_source = message.data
         self._schedule_broadcast(self.status_payload())
 
-    def _watchdog_callback(self) -> None:
-        if (
-            self._moving_command_active
-            and time.monotonic() - self._last_cmd_time > self._timeout_s
-        ):
-            self.stop()
+    def _publish_timer_callback(self) -> None:
+        now = time.monotonic()
+
+        with self._command_lock:
+            timed_out = now - self._last_cmd_time > self._timeout_s
+            if timed_out:
+                linear_x = 0.0
+                angular_z = 0.0
+                self._moving_command_active = False
+            else:
+                linear_x = self._latest_linear_x
+                angular_z = self._latest_angular_z
+
+        self._publish_twist(linear_x, angular_z)
 
     def _schedule_broadcast(self, payload: dict[str, Any]) -> None:
         asyncio.run_coroutine_threadsafe(
@@ -529,7 +549,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             message_type = data.get("type", "cmd_vel")
 
             if message_type == "cmd_vel":
-                node.publish_cmd_vel(
+                node.update_cmd_vel(
                     float(data.get("v", 0.0)),
                     float(data.get("w", 0.0)),
                 )
