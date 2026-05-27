@@ -4,7 +4,7 @@
   <version>0.0.1</version>
   <description>Web Teleop publishing Twist to /cmd_vel and controlling FRE2026 task navigation.</description>
 
-  <maintainer email="tzimmerman@stud.hs-heilbronn.de">you</maintainer>
+  <maintainer email="tzimmerman@stud.hs-heilbronn.de">Timo Zimmermann</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
