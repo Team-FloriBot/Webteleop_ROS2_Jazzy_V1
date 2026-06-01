@@ -337,13 +337,35 @@
       gap: 8px;
     }
 
-    input[type="text"] {
+    .task4-input-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    input[type="text"],
+    textarea {
       min-width: 0;
       border: 1px solid #c7d0dd;
       border-radius: 10px;
       padding: 10px;
       background: #ffffff;
       color: #17212b;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: #8d98a6;
+      opacity: 1;
+    }
+
+    textarea {
+      min-height: 78px;
+      resize: vertical;
+      user-select: text;
+      -webkit-user-select: text;
+      touch-action: auto;
     }
 
     .feedback {
@@ -378,6 +400,46 @@
       color: #17212b;
     }
 
+    .task-visual {
+      display: grid;
+      gap: 6px;
+      padding: 10px;
+      border: 1px solid #d8e0ea;
+      border-radius: 12px;
+      background: #f9fbfe;
+    }
+
+    .task4-svg {
+      width: 100%;
+      height: 180px;
+      border-radius: 10px;
+      background:
+        linear-gradient(90deg, rgba(0, 0, 0, 0.045) 1px, transparent 1px),
+        linear-gradient(rgba(0, 0, 0, 0.045) 1px, transparent 1px),
+        #ffffff;
+      background-size: 20px 20px;
+    }
+
+    .task4-svg .field {
+      fill: rgba(20, 88, 212, 0.08);
+      stroke: #1458d4;
+      stroke-width: 2;
+    }
+
+    .task4-svg .start-point {
+      fill: #1458d4;
+    }
+
+    .task4-svg .robot-heading {
+      fill: #17212b;
+    }
+
+    .task4-svg .edge-arrow {
+      stroke: #17212b;
+      stroke-width: 2;
+      marker-end: url(#arrowHead);
+    }
+
     @media (max-width: 430px) {
       :root {
         --pad-radius: 115px;
@@ -408,7 +470,8 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .pattern-row {
+      .pattern-row,
+      .task4-input-row {
         grid-template-columns: 1fr;
       }
     }
@@ -529,7 +592,7 @@
           <input
             id="patternInput"
             type="text"
-            value="AB"
+            placeholder="z. B. 1L 2R 3L"
             autocomplete="off"
             spellcheck="false"
           />
@@ -541,6 +604,7 @@
           <button id="pauseTaskButton" class="task-button">Pause</button>
           <button id="resumeTaskButton" class="task-button">Fortsetzen</button>
           <button id="stopTaskButton" class="task-button stop">Task stoppen</button>
+          <button id="resetTaskButton" class="task-button stop">Reset</button>
         </div>
 
         <div class="task-status">
@@ -550,6 +614,93 @@
         </div>
 
         <div id="taskFeedback" class="feedback"></div>
+      </div>
+
+      <div class="card">
+        <div>
+          <div class="title">Task 2 Plant Health Detection</div>
+          <div class="muted">Erkennung kranker Pflanzen starten, unterbrechen und stoppen.</div>
+        </div>
+
+        <div class="task-status">
+          <div>Aufgabe: <strong>5 gekrümmte Reihen, kranke Pflanzen innerhalb 40 cm erkennen</strong></div>
+          <div>Ausgabe: <strong>öffentliches Signal, optional CSV-Log</strong></div>
+        </div>
+
+        <div class="task-grid">
+          <button id="startTask2Button" class="task-button primary">Start</button>
+          <button id="pauseTask2Button" class="task-button">Unterbrechen</button>
+          <button id="resumeTask2Button" class="task-button">Fortsetzen</button>
+          <button id="stopTask2Button" class="task-button stop">Stop</button>
+        </div>
+
+        <div id="task2Feedback" class="feedback"></div>
+      </div>
+
+      <div class="card">
+        <div>
+          <div class="title">Task 3 Biodiversity Monitoring</div>
+          <div class="muted">Insektenstationen klassifizieren und Task-3-Ablauf steuern.</div>
+        </div>
+
+        <div class="task-status">
+          <div>Aufgabe: <strong>10 Stationen mit Biene, Schädling oder Schmetterling</strong></div>
+          <div>Ausgabe: <strong>sichtbares und hörbares Klassifikationssignal</strong></div>
+        </div>
+
+        <div class="task-grid">
+          <button id="startTask3Button" class="task-button primary">Start</button>
+          <button id="pauseTask3Button" class="task-button">Unterbrechen</button>
+          <button id="resumeTask3Button" class="task-button">Fortsetzen</button>
+          <button id="stopTask3Button" class="task-button stop">Stop</button>
+        </div>
+
+        <div id="task3Feedback" class="feedback"></div>
+      </div>
+
+      <div class="card">
+        <div>
+          <div class="title">Task 4 Coverage</div>
+          <div class="muted">Eckpunkte setzen, Planung auslösen und Task-4-Steuerung bedienen.</div>
+        </div>
+
+        <div class="task4-input-row">
+          <textarea
+            id="task4CornersInput"
+            placeholder="z. B. 0,0 5,0 5,5 0,5"
+            autocomplete="off"
+            spellcheck="false"
+          ></textarea>
+          <button id="setTask4CornersButton" class="task-button">Eckpunkte setzen</button>
+        </div>
+
+        <div class="task-grid">
+          <button id="planTask4Button" class="task-button">Planen</button>
+          <button id="startTask4Button" class="task-button primary">Start</button>
+          <button id="pauseTask4Button" class="task-button">Unterbrechen</button>
+          <button id="resumeTask4Button" class="task-button">Fortsetzen</button>
+          <button id="stopTask4Button" class="task-button stop">Stop</button>
+        </div>
+
+        <div class="task-visual">
+          <svg id="task4Preview" class="task4-svg" viewBox="0 0 320 180" role="img" aria-label="Task-4-Startposition und Ausrichtung">
+            <defs>
+              <marker id="arrowHead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                <path d="M0,0 L8,4 L0,8 Z" fill="#17212b"></path>
+              </marker>
+            </defs>
+            <polygon id="task4Polygon" class="field" points="70,130 250,130 250,50 70,50"></polygon>
+            <line id="task4HeadingLine" class="edge-arrow" x1="70" y1="130" x2="125" y2="130"></line>
+            <circle id="task4StartPoint" class="start-point" cx="70" cy="130" r="5"></circle>
+            <polygon id="task4Robot" class="robot-heading" points="70,122 82,130 70,138"></polygon>
+          </svg>
+          <div class="task-status">
+            <div>Startpunkt: <strong id="task4StartText">0.00 / 0.00 m</strong></div>
+            <div>Ausrichtung: <strong id="task4HeadingText">0.0° entlang Punkt 1 → Punkt 2</strong></div>
+          </div>
+        </div>
+
+        <div id="task4Feedback" class="feedback"></div>
       </div>
     </section>
   </main>
@@ -594,6 +745,29 @@
   const pauseTaskButton = document.getElementById("pauseTaskButton");
   const resumeTaskButton = document.getElementById("resumeTaskButton");
   const stopTaskButton = document.getElementById("stopTaskButton");
+  const resetTaskButton = document.getElementById("resetTaskButton");
+  const startTask2Button = document.getElementById("startTask2Button");
+  const pauseTask2Button = document.getElementById("pauseTask2Button");
+  const resumeTask2Button = document.getElementById("resumeTask2Button");
+  const stopTask2Button = document.getElementById("stopTask2Button");
+  const startTask3Button = document.getElementById("startTask3Button");
+  const pauseTask3Button = document.getElementById("pauseTask3Button");
+  const resumeTask3Button = document.getElementById("resumeTask3Button");
+  const stopTask3Button = document.getElementById("stopTask3Button");
+  const task4Feedback = document.getElementById("task4Feedback");
+  const task4CornersInput = document.getElementById("task4CornersInput");
+  const setTask4CornersButton = document.getElementById("setTask4CornersButton");
+  const planTask4Button = document.getElementById("planTask4Button");
+  const startTask4Button = document.getElementById("startTask4Button");
+  const pauseTask4Button = document.getElementById("pauseTask4Button");
+  const resumeTask4Button = document.getElementById("resumeTask4Button");
+  const stopTask4Button = document.getElementById("stopTask4Button");
+  const task4Polygon = document.getElementById("task4Polygon");
+  const task4HeadingLine = document.getElementById("task4HeadingLine");
+  const task4StartPoint = document.getElementById("task4StartPoint");
+  const task4Robot = document.getElementById("task4Robot");
+  const task4StartText = document.getElementById("task4StartText");
+  const task4HeadingText = document.getElementById("task4HeadingText");
   const missionState = document.getElementById("missionState");
   const activePattern = document.getElementById("activePattern");
   const activeStep = document.getElementById("activeStep");
@@ -608,6 +782,7 @@
   let websocket = null;
   let connected = false;
   let activeSource = "unknown";
+  let runningTask = null;
   let active = false;
   let pointerId = null;
 
@@ -661,6 +836,133 @@
     return true;
   }
 
+
+
+  function parseTask4Corners() {
+    const values = task4CornersInput.value
+      .trim()
+      .split(/[\s,;]+/)
+      .filter(Boolean)
+      .map(value => Number.parseFloat(value));
+
+    if (values.length < 6 || values.length % 2 !== 0 || values.some(value => !Number.isFinite(value))) {
+      throw new Error("Bitte mindestens drei Eckpunkte als x/y-Paare eingeben.");
+    }
+
+    return values;
+  }
+
+  function pointsFromFlatCoords(coords) {
+    const points = [];
+    for (let i = 0; i < coords.length; i += 2) {
+      points.push({ x: coords[i], y: coords[i + 1] });
+    }
+    return points;
+  }
+
+  function updateTask4Preview() {
+    let coords;
+    try {
+      coords = parseTask4Corners();
+    } catch (error) {
+      return;
+    }
+
+    const points = pointsFromFlatCoords(coords);
+    const minX = Math.min(...points.map(point => point.x));
+    const maxX = Math.max(...points.map(point => point.x));
+    const minY = Math.min(...points.map(point => point.y));
+    const maxY = Math.max(...points.map(point => point.y));
+    const spanX = Math.max(0.001, maxX - minX);
+    const spanY = Math.max(0.001, maxY - minY);
+    const padding = 24;
+    const width = 320 - 2 * padding;
+    const height = 180 - 2 * padding;
+    const scale = Math.min(width / spanX, height / spanY);
+    const offsetX = (320 - spanX * scale) / 2;
+    const offsetY = (180 - spanY * scale) / 2;
+
+    const toSvg = point => ({
+      x: offsetX + (point.x - minX) * scale,
+      y: 180 - (offsetY + (point.y - minY) * scale),
+    });
+
+    const svgPoints = points.map(toSvg);
+    task4Polygon.setAttribute("points", svgPoints.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" "));
+
+    const start = points[0];
+    const second = points[1];
+    const startSvg = svgPoints[0];
+    const secondSvg = svgPoints[1];
+    const heading = Math.atan2(second.y - start.y, second.x - start.x);
+    const svgHeading = Math.atan2(secondSvg.y - startSvg.y, secondSvg.x - startSvg.x);
+    const arrowLength = 46;
+    const arrowEnd = {
+      x: startSvg.x + arrowLength * Math.cos(svgHeading),
+      y: startSvg.y + arrowLength * Math.sin(svgHeading),
+    };
+
+    task4StartPoint.setAttribute("cx", startSvg.x.toFixed(1));
+    task4StartPoint.setAttribute("cy", startSvg.y.toFixed(1));
+    task4HeadingLine.setAttribute("x1", startSvg.x.toFixed(1));
+    task4HeadingLine.setAttribute("y1", startSvg.y.toFixed(1));
+    task4HeadingLine.setAttribute("x2", arrowEnd.x.toFixed(1));
+    task4HeadingLine.setAttribute("y2", arrowEnd.y.toFixed(1));
+
+    const robotLength = 20;
+    const robotWidth = 14;
+    const tip = {
+      x: startSvg.x + robotLength * Math.cos(svgHeading),
+      y: startSvg.y + robotLength * Math.sin(svgHeading),
+    };
+    const left = {
+      x: startSvg.x + robotWidth * Math.cos(svgHeading + 2.35),
+      y: startSvg.y + robotWidth * Math.sin(svgHeading + 2.35),
+    };
+    const right = {
+      x: startSvg.x + robotWidth * Math.cos(svgHeading - 2.35),
+      y: startSvg.y + robotWidth * Math.sin(svgHeading - 2.35),
+    };
+    task4Robot.setAttribute("points", `${tip.x.toFixed(1)},${tip.y.toFixed(1)} ${left.x.toFixed(1)},${left.y.toFixed(1)} ${right.x.toFixed(1)},${right.y.toFixed(1)}`);
+
+    task4StartText.textContent = `${start.x.toFixed(2)} / ${start.y.toFixed(2)} m`;
+    task4HeadingText.textContent = `${(heading * 180 / Math.PI).toFixed(1)}° entlang Punkt 1 → Punkt 2`;
+  }
+
+  function taskIsBlocked(taskId) {
+    return runningTask !== null && runningTask !== taskId;
+  }
+
+  function updateRuntimeState(message) {
+    if (Object.prototype.hasOwnProperty.call(message, "running_task")) {
+      runningTask = message.running_task || null;
+    }
+    updateTaskButtons();
+  }
+
+  function updateTaskButtons() {
+    if (!startTaskButton || !startTask2Button || !startTask3Button || !startTask4Button) {
+      return;
+    }
+
+    startTaskButton.disabled = activeSource !== "task1" || taskIsBlocked("task1");
+    startTask2Button.disabled = activeSource !== "task2" || runningTask !== null;
+    startTask3Button.disabled = activeSource !== "task3" || runningTask !== null;
+    startTask4Button.disabled = activeSource !== "task4" || runningTask !== null;
+
+    pauseTask2Button.disabled = runningTask !== "task2";
+    resumeTask2Button.disabled = runningTask !== "task2";
+    stopTask2Button.disabled = runningTask !== "task2";
+
+    pauseTask3Button.disabled = runningTask !== "task3";
+    resumeTask3Button.disabled = runningTask !== "task3";
+    stopTask3Button.disabled = runningTask !== "task3";
+
+    pauseTask4Button.disabled = runningTask !== "task4";
+    resumeTask4Button.disabled = runningTask !== "task4";
+    stopTask4Button.disabled = runningTask !== "task4";
+  }
+
   function updateNavigationStatus(message) {
     missionState.textContent = message.mission_state || "nicht verfügbar";
     activePattern.textContent = message.active_pattern || "–";
@@ -673,10 +975,11 @@
 
     setPatternButton.disabled = !message.can_set_pattern;
     patternInput.disabled = !message.can_set_pattern;
-    startTaskButton.disabled = !message.can_start || activeSource !== "task1";
-    pauseTaskButton.disabled = !message.can_pause;
-    resumeTaskButton.disabled = !message.can_resume;
-    stopTaskButton.disabled = !message.can_abort;
+    startTaskButton.disabled = !message.can_start || activeSource !== "task1" || taskIsBlocked("task1");
+    pauseTaskButton.disabled = !message.can_pause || runningTask !== "task1";
+    resumeTaskButton.disabled = !message.can_resume || runningTask !== "task1";
+    stopTaskButton.disabled = !message.can_abort || runningTask !== "task1";
+    updateTaskButtons();
   }
 
   function updateActiveSource(source) {
@@ -701,7 +1004,7 @@
       stopMotion();
     }
 
-    startTaskButton.disabled = activeSource !== "task1";
+    updateTaskButtons();
   }
 
   function connectWebSocket() {
@@ -720,16 +1023,19 @@
       const message = JSON.parse(event.data);
 
       if (message.type === "selector_status") {
+        updateRuntimeState(message);
         updateActiveSource(message.active_source);
       }
 
       if (message.type === "selection_result") {
+        updateRuntimeState(message);
         updateActiveSource(message.active_source);
         showFeedback(selectionFeedback, message.message, message.success);
         sendTaskMessage({ type: "request_navigation_status" }, false);
       }
 
       if (message.type === "navigation_status") {
+        updateRuntimeState(message);
         if (message.success) {
           updateNavigationStatus(message);
         } else {
@@ -739,8 +1045,23 @@
       }
 
       if (message.type === "task_result") {
+        updateRuntimeState(message);
         showFeedback(taskFeedback, message.message, message.success);
         sendTaskMessage({ type: "request_navigation_status" }, false);
+        sendTaskMessage({ type: "request_selector_status" }, false);
+      }
+
+      if (message.type === "task_result_generic") {
+        updateRuntimeState(message);
+        const feedbackElement = message.task === "task2" ? task2Feedback : task3Feedback;
+        showFeedback(feedbackElement, message.message, message.success);
+        sendTaskMessage({ type: "request_selector_status" }, false);
+      }
+
+      if (message.type === "task4_result") {
+        updateRuntimeState(message);
+        showFeedback(task4Feedback, message.message, message.success);
+        sendTaskMessage({ type: "request_selector_status" }, false);
       }
     };
 
@@ -965,19 +1286,89 @@
       return;
     }
 
-    sendTaskMessage({ type: "start_navigation" });
+    sendTaskMessage({ type: "navigation_command", command: "start", confirmed: true });
   });
 
   pauseTaskButton.addEventListener("click", () => {
-    sendTaskMessage({ type: "pause_navigation" });
+    sendTaskMessage({ type: "navigation_command", command: "pause", confirmed: true });
   });
 
   resumeTaskButton.addEventListener("click", () => {
-    sendTaskMessage({ type: "resume_navigation" });
+    sendTaskMessage({ type: "navigation_command", command: "resume", confirmed: true });
   });
 
   stopTaskButton.addEventListener("click", () => {
-    sendTaskMessage({ type: "abort_navigation" });
+    sendTaskMessage({ type: "navigation_command", command: "stop", confirmed: true });
+  });
+
+  resetTaskButton.addEventListener("click", () => {
+    sendTaskMessage({ type: "reset_navigation" });
+  });
+
+  function sendGenericTaskCommand(task, command, feedbackElement) {
+    if (command === "start" && activeSource !== task) {
+      showFeedback(feedbackElement, `${labels[task]} muss als aktive Quelle ausgewählt sein.`, false);
+      return;
+    }
+
+    if (command === "start" && runningTask !== null) {
+      showFeedback(feedbackElement, `${labels[runningTask] || runningTask} läuft bereits. Bitte zuerst stoppen.`, false);
+      return;
+    }
+
+    sendTaskMessage({ type: "task_command", task, command });
+  }
+
+  startTask2Button.addEventListener("click", () => sendGenericTaskCommand("task2", "start", task2Feedback));
+  pauseTask2Button.addEventListener("click", () => sendGenericTaskCommand("task2", "pause", task2Feedback));
+  resumeTask2Button.addEventListener("click", () => sendGenericTaskCommand("task2", "resume", task2Feedback));
+  stopTask2Button.addEventListener("click", () => sendGenericTaskCommand("task2", "stop", task2Feedback));
+
+  startTask3Button.addEventListener("click", () => sendGenericTaskCommand("task3", "start", task3Feedback));
+  pauseTask3Button.addEventListener("click", () => sendGenericTaskCommand("task3", "pause", task3Feedback));
+  resumeTask3Button.addEventListener("click", () => sendGenericTaskCommand("task3", "resume", task3Feedback));
+  stopTask3Button.addEventListener("click", () => sendGenericTaskCommand("task3", "stop", task3Feedback));
+
+  task4CornersInput.addEventListener("input", updateTask4Preview);
+
+  setTask4CornersButton.addEventListener("click", () => {
+    try {
+      const polygon_coords = parseTask4Corners();
+      updateTask4Preview();
+      sendTaskMessage({ type: "set_task4_polygon", polygon_coords });
+    } catch (error) {
+      showFeedback(task4Feedback, error.message, false);
+    }
+  });
+
+  planTask4Button.addEventListener("click", () => {
+    sendTaskMessage({ type: "trigger_task4_planning" });
+  });
+
+  startTask4Button.addEventListener("click", () => {
+    if (activeSource !== "task4") {
+      showFeedback(task4Feedback, "Task 4 muss als aktive Quelle ausgewählt sein.", false);
+      return;
+    }
+
+    if (runningTask !== null) {
+      showFeedback(task4Feedback, `${labels[runningTask] || runningTask} läuft bereits. Bitte zuerst stoppen.`, false);
+      return;
+    }
+
+    sendTaskMessage({ type: "task4_command", command: "start" });
+  });
+
+  pauseTask4Button.addEventListener("click", () => {
+    sendTaskMessage({ type: "task4_command", command: "pause" });
+  });
+
+  resumeTask4Button.addEventListener("click", () => {
+    sendTaskMessage({ type: "task4_command", command: "resume" });
+  });
+
+  stopTask4Button.addEventListener("click", () => {
+    sendTaskMessage({ type: "task4_command", command: "stop" });
   });
 
   document.addEventListener("visibilitychange", () => {
@@ -1038,6 +1429,7 @@
   }, SEND_PERIOD_MS);
 
   updateSliderLabels();
+  updateTask4Preview();
   updateActiveSource("unknown");
   connectWebSocket();
 </script>
