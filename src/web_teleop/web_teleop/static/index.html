@@ -10,7 +10,7 @@
 
   <style>
     :root {
-      --pad-radius: 84px;
+      --pad-radius: 130px;
       --stick-radius: 34px;
       --primary: #1458d4;
       --ok-bg: #d7f5dc;
@@ -380,7 +380,7 @@
 
     @media (max-width: 430px) {
       :root {
-        --pad-radius: 78px;
+        --pad-radius: 115px;
         --stick-radius: 30px;
       }
 
@@ -414,6 +414,11 @@
     }
 
     @media (orientation: landscape) and (max-height: 480px) {
+      :root {
+        --pad-radius: 110px;
+        --stick-radius: 30px;
+      }
+
       .sliders-overlay {
         width: min(380px, calc(100vw - 20px));
         left: auto;
@@ -595,6 +600,11 @@
 
   const SEND_PERIOD_MS = 50;
 
+  const LINEAR_ACCEL_LIMIT = 0.40;
+  const LINEAR_DECEL_LIMIT = 0.70;
+  const ANGULAR_ACCEL_LIMIT = 1.20;
+  const ANGULAR_DECEL_LIMIT = 2.00;
+
   let websocket = null;
   let connected = false;
   let activeSource = "unknown";
@@ -608,6 +618,10 @@
   let vectorLength = 0.0;
   let vectorAngle = 0.0;
   let maxVectorLength = 50.0;
+
+  let cmdV = 0.0;
+  let cmdW = 0.0;
+  let lastCommandTime = performance.now();
 
   const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
   const currentVMax = () => Number.parseFloat(vMaxSlider.value);
@@ -834,10 +848,36 @@
     return clamp(vectorLength / maxVectorLength, 0.0, 1.0);
   }
 
+  function approachValue(current, target, maxDelta) {
+    if (target > current) {
+      return Math.min(current + maxDelta, target);
+    }
+
+    if (target < current) {
+      return Math.max(current - maxDelta, target);
+    }
+
+    return current;
+  }
+
+  function rampValue(current, target, accelLimit, decelLimit, dt) {
+    const movingTowardZero =
+      Math.abs(target) < Math.abs(current) ||
+      Math.sign(target) !== Math.sign(current);
+
+    const limit = movingTowardZero ? decelLimit : accelLimit;
+    return approachValue(current, target, limit * dt);
+  }
+
   function stopMotion() {
     active = false;
     pointerId = null;
     drawJoystickStop();
+
+    cmdV = 0.0;
+    cmdW = 0.0;
+    lastCommandTime = performance.now();
+
     sendCommand(0.0, 0.0);
     outElement.textContent = "v=0.00 m/s, ω=0.00 rad/s";
   }
@@ -854,6 +894,7 @@
     event.preventDefault();
     active = true;
     pointerId = event.pointerId;
+    lastCommandTime = performance.now();
     teleopView.setPointerCapture(pointerId);
     const point = getLocalPoint(event);
     drawJoystickStart(point.x, point.y);
@@ -962,15 +1003,38 @@
       return;
     }
 
+    const now = performance.now();
+    const dt = Math.min(0.2, Math.max(0.001, (now - lastCommandTime) / 1000.0));
+    lastCommandTime = now;
+
     const speedRatio = getSpeedRatio();
     const xRel = getXrel();
     const yRel = getYrel();
 
-    const linearVelocity = -yRel * speedRatio * currentVMax();
-    const angularVelocity = -xRel * speedRatio * currentWMax();
+    const targetV = -yRel * speedRatio * currentVMax();
+    const targetW = -xRel * speedRatio * currentWMax();
 
-    sendCommand(linearVelocity, angularVelocity);
-    outElement.textContent = `v=${linearVelocity.toFixed(2)} m/s, ω=${angularVelocity.toFixed(2)} rad/s`;
+    cmdV = rampValue(
+      cmdV,
+      targetV,
+      LINEAR_ACCEL_LIMIT,
+      LINEAR_DECEL_LIMIT,
+      dt
+    );
+
+    cmdW = rampValue(
+      cmdW,
+      targetW,
+      ANGULAR_ACCEL_LIMIT,
+      ANGULAR_DECEL_LIMIT,
+      dt
+    );
+
+    sendCommand(cmdV, cmdW);
+
+    outElement.textContent =
+      `v=${cmdV.toFixed(2)} m/s, ω=${cmdW.toFixed(2)} rad/s\n` +
+      `v_soll=${targetV.toFixed(2)} m/s, ω_soll=${targetW.toFixed(2)} rad/s`;
   }, SEND_PERIOD_MS);
 
   updateSliderLabels();
