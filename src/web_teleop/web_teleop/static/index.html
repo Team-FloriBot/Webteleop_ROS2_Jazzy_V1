@@ -75,54 +75,25 @@
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
     }
 
-    .title-row {
+    .row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
+      gap: 12px;
+      flex-wrap: wrap;
     }
 
     .title {
-      font-size: 18px;
-      font-weight: 650;
-      margin: 0;
-    }
-
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .icon-button,
-    .back-button {
-      min-height: 42px;
-      border-radius: 10px;
-      border: 1px solid #d6dce5;
-      background: #ffffff;
-      color: #17212b;
-      padding: 8px 12px;
-      cursor: pointer;
-      touch-action: manipulation;
-    }
-
-    .icon-button {
-      min-width: 46px;
-      font-size: 22px;
-      line-height: 1;
-    }
-
-    .back-button {
-      font-weight: 600;
+      font-weight: 700;
+      font-size: 1.15rem;
     }
 
     .status {
-      margin: 0;
-      font-size: 14px;
-      padding: 5px 9px;
-      border-radius: 8px;
-      width: fit-content;
-      white-space: nowrap;
+      font-weight: 700;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--err-bg);
+      color: var(--err-fg);
     }
 
     .status.ok {
@@ -135,240 +106,51 @@
       color: var(--err-fg);
     }
 
-    .source-banner {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 6px;
-      background: #edf3ff;
-      color: #183c83;
-      padding: 8px 10px;
-      border-radius: 9px;
-      font-size: 14px;
-    }
-
-    .source-banner strong {
-      font-weight: 700;
-    }
-
-    .out code {
-      background: #f0f2f5;
-      padding: 2px 6px;
-      border-radius: 6px;
-    }
-
-    .slider-row {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 10px;
-      align-items: center;
-    }
-
-    .slider-label {
-      grid-column: 1 / -1;
-      font-size: 14px;
-      color: #333333;
-    }
-
-    input[type="range"] {
-      width: 100%;
-      touch-action: pan-x;
-    }
-
-    .slider-value {
-      min-width: 82px;
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-      font-size: 14px;
-    }
-
-    .control-area {
-      position: relative;
-      min-height: 0;
-      border-radius: 18px;
-      background:
-        linear-gradient(90deg, rgba(0, 0, 0, 0.035) 1px, transparent 1px),
-        linear-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px),
-        #ffffff;
-      background-size: 28px 28px;
-      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
-      overflow: hidden;
-      touch-action: none;
-    }
-
     .hint {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      color: #777777;
-      font-size: 15px;
-      text-align: center;
-      pointer-events: none;
-    }
-
-    .control-disabled {
-      display: none;
-      position: absolute;
-      inset: 0;
-      z-index: 3;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 24px;
-      background: rgba(255, 255, 255, 0.88);
-      color: #39424d;
-      font-weight: 600;
-    }
-
-    .control-disabled.active {
-      display: flex;
-    }
-
-    .joystick {
-      position: absolute;
-      width: calc(2 * var(--pad-radius));
-      height: calc(2 * var(--pad-radius));
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      background:
-        radial-gradient(
-          circle at 35% 35%,
-          rgba(255, 255, 255, 0.95),
-          rgba(210, 210, 210, 0.88)
-        );
-      border: 2px solid rgba(80, 80, 80, 0.35);
-      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
-      display: none;
-      pointer-events: none;
-    }
-
-    .joystick.active {
-      display: block;
-    }
-
-    .stick {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: calc(2 * var(--stick-radius));
-      height: calc(2 * var(--stick-radius));
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      background: radial-gradient(circle at 35% 35%, #ffffff, #d7d7d7);
-      border: 2px solid rgba(50, 50, 50, 0.45);
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
-    }
-
-    .crosshair::before,
-    .crosshair::after {
-      content: "";
-      position: absolute;
-      background: rgba(0, 0, 0, 0.16);
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-    }
-
-    .crosshair::before {
-      width: 1px;
-      height: 76%;
-    }
-
-    .crosshair::after {
-      width: 76%;
-      height: 1px;
-    }
-
-    .settings-view.active {
-      grid-template-rows: auto 1fr;
-    }
-
-    .settings-content {
-      min-height: 0;
-      overflow-y: auto;
-      padding-bottom: env(safe-area-inset-bottom);
-      touch-action: pan-y;
-    }
-
-    .settings-card {
-      box-shadow: none;
-      border: 1px solid #e1e6ee;
-      margin-top: 12px;
-    }
-
-    .settings-card h2 {
-      font-size: 16px;
-      margin: 0;
-    }
-
-    .settings-card p {
-      margin: 0;
       color: var(--muted);
-      font-size: 14px;
+      font-size: 0.9rem;
     }
 
-    .sources {
+    .source-grid {
       display: grid;
-      gap: 9px;
-      margin-top: 4px;
-    }
-
-    .source-button {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
-      width: 100%;
-      min-height: 52px;
-      text-align: left;
-      border: 1px solid #d4dbe5;
-      border-radius: 11px;
-      background: #ffffff;
-      padding: 10px 12px;
-      cursor: pointer;
-      touch-action: manipulation;
     }
 
-    .source-button:active {
-      background: #f1f5ff;
+    .source-button,
+    .nav-button,
+    .task-button {
+      border: 0;
+      border-radius: 12px;
+      padding: 10px;
+      background: #e8edf5;
+      color: #17212b;
+      font-weight: 700;
+      cursor: pointer;
     }
 
     .source-button.selected {
-      border: 2px solid var(--primary);
-      background: #edf3ff;
-    }
-
-    .source-name {
-      font-weight: 600;
-    }
-
-    .source-topic {
-      display: block;
-      color: var(--muted);
-      font-size: 13px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    }
-
-    .active-tag {
-      display: none;
-      font-size: 12px;
-      font-weight: 700;
-      color: #ffffff;
       background: var(--primary);
-      border-radius: 99px;
-      padding: 4px 8px;
+      color: #ffffff;
     }
 
-    .source-button.selected .active-tag {
-      display: inline-block;
+    .source-button:disabled,
+    .task-button:disabled,
+    input:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .nav-button {
+      background: var(--primary);
+      color: #ffffff;
     }
 
     .selection-feedback {
       display: none;
-      border-radius: 9px;
-      padding: 10px;
-      font-size: 14px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 0.9rem;
     }
 
     .selection-feedback.visible {
@@ -385,338 +167,358 @@
       color: var(--err-fg);
     }
 
-
-    .task-input {
-      width: 100%;
-      min-height: 46px;
-      border: 1px solid #d4dbe5;
-      border-radius: 10px;
-      padding: 10px 12px;
-      background: #ffffff;
-      user-select: text;
-      -webkit-user-select: text;
-    }
-
-    .task-actions {
+    .sliders {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 9px;
+      gap: 10px;
     }
 
-    .task-button {
-      min-height: 46px;
-      border: 1px solid #d4dbe5;
-      border-radius: 10px;
-      background: #ffffff;
+    .slider-line {
+      display: grid;
+      gap: 5px;
+    }
+
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    .drive-area {
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      position: relative;
+      border-radius: 18px;
+      background:
+        radial-gradient(circle at center, #ffffff 0, #ffffff 34%, #e9eef6 35%, #e9eef6 100%);
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    .drive-disabled {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      background: rgba(245, 247, 250, 0.86);
+      z-index: 4;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .drive-disabled.active {
+      display: flex;
+    }
+
+    .pad {
+      width: calc(var(--pad-radius) * 2);
+      height: calc(var(--pad-radius) * 2);
+      border-radius: 50%;
+      background:
+        linear-gradient(90deg, transparent 49%, rgba(20, 88, 212, 0.18) 50%, transparent 51%),
+        linear-gradient(0deg, transparent 49%, rgba(20, 88, 212, 0.18) 50%, transparent 51%),
+        #dce5f2;
+      border: 4px solid #c5d1e2;
+      position: relative;
+      touch-action: none;
+    }
+
+    .stick {
+      width: calc(var(--stick-radius) * 2);
+      height: calc(var(--stick-radius) * 2);
+      border-radius: 50%;
+      background: var(--primary);
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 6px 18px rgba(20, 88, 212, 0.35);
+      touch-action: none;
+    }
+
+    .telemetry {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      background: rgba(255, 255, 255, 0.86);
+      border-radius: 12px;
       padding: 10px;
-      font-weight: 600;
-      cursor: pointer;
-      touch-action: manipulation;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      z-index: 3;
+    }
+
+    .settings-view {
+      overflow: auto;
+    }
+
+    .settings-grid {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .settings-card h2 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .task-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .pattern-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+    }
+
+    input[type="text"] {
+      min-width: 0;
+      border: 1px solid #c7d0dd;
+      border-radius: 10px;
+      padding: 10px;
+      background: #ffffff;
+      color: #17212b;
     }
 
     .task-button.primary {
       background: var(--primary);
-      border-color: var(--primary);
       color: #ffffff;
     }
 
-    .task-button.danger {
-      border-color: #d02f3a;
-      color: #9c1823;
+    .task-button.stop {
+      background: #8a1820;
+      color: #ffffff;
     }
 
-    .task-button:disabled,
-    .task-input:disabled {
-      cursor: not-allowed;
-      opacity: 0.48;
-    }
-
-    .task-data {
+    .task-status {
       display: grid;
-      gap: 5px;
-      font-size: 14px;
+      gap: 4px;
+      font-size: 0.92rem;
       color: var(--muted);
     }
 
-    .task-data strong {
+    .task-status strong {
       color: #17212b;
+    }
+
+    @media (orientation: landscape) and (max-height: 520px) {
+      .view.active {
+        grid-template-columns: minmax(280px, 380px) 1fr;
+        grid-template-rows: 1fr;
+      }
+
+      .top {
+        align-content: start;
+      }
+
+      .settings-view.active {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 420px) {
+      .source-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .pattern-row {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 
 <body>
-  <main class="page">
-    <section class="view active" id="teleopView">
-      <div class="top">
-        <div class="title-row">
-          <p class="title">Web Teleop</p>
-
-          <div class="header-actions">
-            <p class="status err" id="wsStatus">Offline</p>
-
-            <button
-              class="icon-button"
-              id="menuButton"
-              aria-label="Einstellungen öffnen"
-            >
-              ☰
-            </button>
+  <div class="page">
+    <main id="teleopView" class="view active">
+      <section class="top">
+        <div class="row">
+          <div>
+            <div class="title">FloriBot Web Teleop</div>
+            <div class="hint">
+              Quelle wählen, dann Joystick berühren und halten.
+            </div>
           </div>
+          <div id="wsStatus" class="status err">Offline</div>
         </div>
 
-        <div class="source-banner">
-          Aktive Fahrquelle:
+        <div class="row">
+          <span>Aktive Quelle:</span>
           <strong id="activeSourceMain">nicht bekannt</strong>
         </div>
 
-        <div class="slider-row">
-          <label class="slider-label" for="vMaxSlider">
-            Maximale lineare Geschwindigkeit
+        <div class="source-grid" id="sourceButtonsMain">
+          <button class="source-button" data-source="none">Stop</button>
+          <button class="source-button" data-source="webteleop">Webteleop</button>
+          <button class="source-button" data-source="task1">Task 1</button>
+          <button class="source-button" data-source="task2">Task 2</button>
+          <button class="source-button" data-source="task3">Task 3</button>
+          <button class="source-button" data-source="task4">Task 4</button>
+          <button class="source-button" data-source="task5">Task 5</button>
+        </div>
+
+        <div id="selectionFeedback" class="selection-feedback"></div>
+
+        <div class="sliders">
+          <label class="slider-line">
+            <span class="slider-label">
+              <span>v<sub>max</sub></span>
+              <span id="vMaxValue">0.25 m/s</span>
+            </span>
+            <input
+              id="vMaxSlider"
+              type="range"
+              min="0.05"
+              max="1.00"
+              step="0.01"
+              value="0.25"
+            />
           </label>
 
-          <input
-            id="vMaxSlider"
-            type="range"
-            min="0.05"
-            max="1.00"
-            step="0.05"
-            value="0.25"
-          />
-
-          <span class="slider-value" id="vMaxValue">0.25 m/s</span>
-        </div>
-
-        <div class="slider-row">
-          <label class="slider-label" for="wMaxSlider">
-            Maximale Winkelgeschwindigkeit
+          <label class="slider-line">
+            <span class="slider-label">
+              <span>ω<sub>max</sub></span>
+              <span id="wMaxValue">0.80 rad/s</span>
+            </span>
+            <input
+              id="wMaxSlider"
+              type="range"
+              min="0.05"
+              max="2.50"
+              step="0.01"
+              value="0.80"
+            />
           </label>
-
-          <input
-            id="wMaxSlider"
-            type="range"
-            min="0.10"
-            max="0.90"
-            step="0.10"
-            value="0.90"
-          />
-
-          <span class="slider-value" id="wMaxValue">0.90 rad/s</span>
         </div>
 
-        <p class="status out">
-          Sende:
-          <code id="out">v=0.00 m/s, w=0.00 rad/s</code>
-        </p>
-      </div>
+        <button id="settingsButton" class="nav-button">
+          Einstellungen / Tasks
+        </button>
+      </section>
 
-      <div class="control-area" id="controlArea">
-        <div class="hint">Finger aufsetzen und ziehen</div>
-
-        <div class="control-disabled" id="controlDisabled">
-          Joystick inaktiv:<br />
-          Zuerst in den Einstellungen „Webteleop“ als Fahrquelle wählen.
+      <section id="controlArea" class="drive-area">
+        <div id="controlDisabled" class="drive-disabled active">
+          Webteleop ist nicht als aktive Quelle ausgewählt.
         </div>
 
-        <div class="joystick crosshair" id="joystick">
-          <div class="stick" id="stick"></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="view settings-view" id="settingsView">
-      <div class="top">
-        <div class="title-row">
-          <button class="back-button" id="backButton">‹ Zurück</button>
-
-          <p class="title">Einstellungen</p>
-
-          <span></span>
+        <div id="joystick" class="pad">
+          <div id="stick" class="stick"></div>
         </div>
 
-        <div class="source-banner">
-          Aktive Fahrquelle:
-          <strong id="activeSourceSettings">nicht bekannt</strong>
-        </div>
-      </div>
+        <pre id="out" class="telemetry">
+v: 0.000 m/s
+ω: 0.000 rad/s
+        </pre>
+      </section>
+    </main>
 
-      <div class="settings-content">
+    <main id="settingsView" class="view settings-view">
+      <section class="settings-grid">
         <div class="settings-card">
-          <h2>cmd_vel-Quelle auswählen</h2>
+          <div class="row">
+            <div>
+              <div class="title">Einstellungen / Tasks</div>
+              <div class="hint">Quellenumschaltung und Task-1-Steuerung.</div>
+            </div>
+            <button id="backButton" class="nav-button">Zurück</button>
+          </div>
+        </div>
 
-          <p>
-            Eine Änderung wird erst nach Ihrer Bestätigung an den Selector
-            übertragen. Beim Umschalten wird ein Stoppbefehl ausgegeben.
-          </p>
+        <div class="settings-card">
+          <h2>Aktive Quelle</h2>
+          <div class="row">
+            <span>Aktuell:</span>
+            <strong id="activeSourceSettings">nicht bekannt</strong>
+          </div>
 
-          <div class="sources" id="sources">
-            <button class="source-button" data-source="webteleop">
-              <span>
-                <span class="source-name">Webteleop</span>
-                <span class="source-topic">/cmd_vel/webteleop</span>
-              </span>
+          <div class="source-grid" id="sourceButtonsSettings">
+            <button class="source-button" data-source="none">Stop</button>
+            <button class="source-button" data-source="webteleop">Webteleop</button>
+            <button class="source-button" data-source="task1">Task 1</button>
+            <button class="source-button" data-source="task2">Task 2</button>
+            <button class="source-button" data-source="task3">Task 3</button>
+            <button class="source-button" data-source="task4">Task 4</button>
+            <button class="source-button" data-source="task5">Task 5</button>
+          </div>
+        </div>
 
-              <span class="active-tag">Aktiv</span>
-            </button>
+        <div class="settings-card">
+          <h2>Task 1 Navigation</h2>
 
-            <button class="source-button" data-source="task1">
-              <span>
-                <span class="source-name">Task 1</span>
-                <span class="source-topic">/cmd_vel/task1</span>
-              </span>
-
-              <span class="active-tag">Aktiv</span>
-            </button>
-
-            <button class="source-button" data-source="task2">
-              <span>
-                <span class="source-name">Task 2</span>
-                <span class="source-topic">/cmd_vel/task2</span>
-              </span>
-
-              <span class="active-tag">Aktiv</span>
-            </button>
-
-            <button class="source-button" data-source="task3">
-              <span>
-                <span class="source-name">Task 3</span>
-                <span class="source-topic">/cmd_vel/task3</span>
-              </span>
-
-              <span class="active-tag">Aktiv</span>
-            </button>
-
-            <button class="source-button" data-source="task4">
-              <span>
-                <span class="source-name">Task 4</span>
-                <span class="source-topic">/cmd_vel/task4</span>
-              </span>
-
-              <span class="active-tag">Aktiv</span>
-            </button>
-
-            <button class="source-button" data-source="task5">
-              <span>
-                <span class="source-name">Task 5</span>
-                <span class="source-topic">/cmd_vel/task5</span>
-              </span>
-
-              <span class="active-tag">Aktiv</span>
-            </button>
-
-            <button class="source-button" data-source="none">
-              <span>
-                <span class="source-name">Stopp / keine Quelle</span>
-                <span class="source-topic">keine Weiterleitung</span>
-              </span>
-
-              <span class="active-tag">Aktiv</span>
+          <div class="pattern-row">
+            <input
+              id="patternInput"
+              type="text"
+              value="AB"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="setPatternButton" class="task-button">
+              Pattern setzen
             </button>
           </div>
 
-          <div
-            class="selection-feedback"
-            id="selectionFeedback"
-            role="status"
-          ></div>
-        </div>
-
-        <div class="settings-card">
-          <h2>Task 1 – Maisnavigation</h2>
-
-          <p>
-            Vor dem Start muss die Fahrquelle „Task 1“ aktiv und ein
-            Fahrmuster gesetzt sein. Starten und Unterbrechen erfordern
-            jeweils eine ausdrückliche Bestätigung.
-          </p>
-
-          <label for="patternInput">Fahrmuster</label>
-          <input
-            class="task-input"
-            id="patternInput"
-            type="text"
-            value="1L 2R"
-            placeholder="z. B. 1L 2R 1L"
-            autocomplete="off"
-            spellcheck="false"
-          />
-
-          <button class="task-button" id="setPatternButton">
-            Fahrmuster übernehmen
-          </button>
-
-          <div class="task-actions">
-            <button class="task-button primary" id="startTaskButton" disabled>
-              Starten
+          <div class="task-grid">
+            <button id="startTaskButton" class="task-button primary">
+              Start
             </button>
-            <button class="task-button" id="pauseTaskButton" disabled>
-              Unterbrechen
+            <button id="pauseTaskButton" class="task-button">
+              Pause
             </button>
-            <button class="task-button" id="resumeTaskButton" disabled>
+            <button id="resumeTaskButton" class="task-button">
               Fortsetzen
             </button>
-            <button class="task-button danger" id="stopTaskButton" disabled>
-              Beenden
+            <button id="stopTaskButton" class="task-button stop">
+              Task stoppen
             </button>
           </div>
 
-          <div class="source-banner">
-            Missionsstatus:
-            <strong id="missionState">nicht verfügbar</strong>
+          <div class="task-status">
+            <div>Status: <strong id="missionState">nicht bekannt</strong></div>
+            <div>Pattern: <strong id="activePattern">–</strong></div>
+            <div>Schritt: <strong id="activeStep">–</strong></div>
           </div>
 
-          <div class="task-data">
-            <span>Aktives Muster: <strong id="activePattern">–</strong></span>
-            <span>Aktueller Schritt: <strong id="activeStep">–</strong></span>
-          </div>
-
-          <div
-            class="selection-feedback"
-            id="taskFeedback"
-            role="status"
-          ></div>
+          <div id="taskFeedback" class="selection-feedback"></div>
         </div>
-      </div>
-    </section>
-  </main>
+      </section>
+    </main>
+  </div>
 
   <script>
-    document.addEventListener(
-      "gesturestart",
-      event => event.preventDefault(),
-      { passive: false }
-    );
-
-    document.addEventListener(
-      "gesturechange",
-      event => event.preventDefault(),
-      { passive: false }
-    );
-
-    document.addEventListener(
-      "gestureend",
-      event => event.preventDefault(),
-      { passive: false }
-    );
-
     const labels = {
-      none: "Stopp / keine Quelle",
+      none: "Stop",
       webteleop: "Webteleop",
       task1: "Task 1",
       task2: "Task 2",
       task3: "Task 3",
       task4: "Task 4",
-      task5: "Task 5",
-      unknown: "nicht bekannt"
+      task5: "Task 5"
     };
 
     const teleopView = document.getElementById("teleopView");
     const settingsView = document.getElementById("settingsView");
-    const menuButton = document.getElementById("menuButton");
+    const settingsButton = document.getElementById("settingsButton");
     const backButton = document.getElementById("backButton");
-    const sourceButtons = document.querySelectorAll(".source-button");
     const wsStatus = document.getElementById("wsStatus");
     const activeSourceMain = document.getElementById("activeSourceMain");
     const activeSourceSettings = document.getElementById("activeSourceSettings");
+    const sourceButtons = Array.from(
+      document.querySelectorAll(".source-button")
+    );
     const feedback = document.getElementById("selectionFeedback");
     const outElement = document.getElementById("out");
     const vMaxSlider = document.getElementById("vMaxSlider");
@@ -899,199 +701,100 @@
       websocket.onerror = () => {
         try {
           websocket.close();
-        } catch (_) {
-          return;
+        } catch (error) {
+          console.warn(error);
         }
       };
     }
 
-    function send(linearVelocity, angularVelocity) {
-      if (
-        connected
-        && websocket?.readyState === WebSocket.OPEN
-      ) {
-        websocket.send(
-          JSON.stringify({
-            type: "cmd_vel",
-            v: linearVelocity,
-            w: angularVelocity
-          })
-        );
-      }
-    }
-
-    function placeJoystick() {
-      joystick.style.left = `${padX}px`;
-      joystick.style.top = `${padY}px`;
-      joystick.classList.add("active");
-    }
-
-    function placeStick() {
-      const deltaX = stickX - padX;
-      const deltaY = stickY - padY;
-
-      stick.style.transform =
-        `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
-    }
-
-    function getLocalPoint(event) {
-      const rectangle = controlArea.getBoundingClientRect();
-
-      return {
-        x: event.clientX - rectangle.left,
-        y: event.clientY - rectangle.top
-      };
-    }
-
-    function drawJoystickStart(x, y) {
-      padX = x;
-      padY = y;
-      stickX = x;
-      stickY = y;
-      vectorLength = 0;
-      vectorAngle = 0;
-
-      placeJoystick();
-      placeStick();
-    }
-
-    function drawJoystickMove(x, y) {
-      const deltaX = x - padX;
-      const deltaY = y - padY;
-
-      vectorLength = Math.hypot(deltaX, deltaY);
-      vectorAngle = Math.atan2(deltaX, -deltaY);
-
-      if (vectorLength > MAX_VECTOR_LENGTH) {
-        vectorLength = MAX_VECTOR_LENGTH;
-        stickX =
-          padX + MAX_VECTOR_LENGTH * Math.sin(vectorAngle);
-        stickY =
-          padY - MAX_VECTOR_LENGTH * Math.cos(vectorAngle);
-      } else {
-        stickX = x;
-        stickY = y;
+    function sendCommand(v, w) {
+      if (!connected || websocket?.readyState !== WebSocket.OPEN) {
+        return;
       }
 
-      placeStick();
-    }
-
-    function drawJoystickStop() {
-      padX = 0;
-      padY = 0;
-      stickX = 0;
-      stickY = 0;
-      vectorLength = 0;
-      vectorAngle = 0;
-
-      joystick.classList.remove("active");
-      stick.style.transform = "translate(-50%, -50%)";
+      websocket.send(
+        JSON.stringify({
+          type: "cmd_vel",
+          v,
+          w
+        })
+      );
     }
 
     function stopMotion() {
       active = false;
       pointerId = null;
+      stickX = 0.0;
+      stickY = 0.0;
+      vectorLength = 0.0;
+      vectorAngle = 0.0;
 
-      drawJoystickStop();
-      send(0, 0);
+      stick.style.left = "50%";
+      stick.style.top = "50%";
+      outElement.textContent = "v: 0.000 m/s\nω: 0.000 rad/s";
 
-      outElement.textContent =
-        "v=0.00 m/s, w=0.00 rad/s";
+      sendCommand(0.0, 0.0);
     }
 
-    vMaxSlider.addEventListener("input", updateSliderLabels);
-    wMaxSlider.addEventListener("input", updateSliderLabels);
+    function updateJoystickFromPointer(clientX, clientY) {
+      const rect = joystick.getBoundingClientRect();
 
-    menuButton.addEventListener("click", showSettings);
-    backButton.addEventListener("click", showTeleop);
+      padX = rect.left + PAD_RADIUS;
+      padY = rect.top + PAD_RADIUS;
 
-    setPatternButton.addEventListener("click", () => {
-      sendTaskMessage({
-        type: "set_navigation_pattern",
-        pattern: patternInput.value.trim()
-      });
-    });
+      const dx = clientX - padX;
+      const dy = clientY - padY;
+      const length = Math.hypot(dx, dy);
+      const limitedLength = Math.min(length, MAX_VECTOR_LENGTH);
+      const angle = Math.atan2(dy, dx);
 
-    startTaskButton.addEventListener("click", () => {
-      if (activeSource !== "task1") {
-        showTaskFeedback(
-          "Vor dem Start muss „Task 1“ als Fahrquelle ausgewählt sein.",
-          false
-        );
+      stickX = Math.cos(angle) * limitedLength;
+      stickY = Math.sin(angle) * limitedLength;
+      vectorLength = limitedLength;
+      vectorAngle = angle;
+
+      stick.style.left = `${PAD_RADIUS + stickX}px`;
+      stick.style.top = `${PAD_RADIUS + stickY}px`;
+    }
+
+    function handlePointerDown(event) {
+      if (activeSource !== "webteleop") {
         return;
       }
 
-      const accepted = window.confirm(
-        `Task 1 wirklich starten?\n\nFahrmuster: ${patternInput.value.trim() || "nicht gesetzt"}`
-      );
-      if (!accepted) {
+      event.preventDefault();
+      active = true;
+      pointerId = event.pointerId;
+      joystick.setPointerCapture(pointerId);
+      updateJoystickFromPointer(event.clientX, event.clientY);
+    }
+
+    function handlePointerMove(event) {
+      if (!active || event.pointerId !== pointerId) {
         return;
       }
 
-      sendTaskMessage({
-        type: "navigation_command",
-        command: "start",
-        confirmed: true
-      });
-    });
+      event.preventDefault();
+      updateJoystickFromPointer(event.clientX, event.clientY);
+    }
 
-    pauseTaskButton.addEventListener("click", () => {
-      const accepted = window.confirm(
-        "Task 1 wirklich unterbrechen?\n\nDer Roboter erhält unmittelbar einen Stoppbefehl."
-      );
-      if (!accepted) {
+    function handlePointerUp(event) {
+      if (event.pointerId !== pointerId) {
         return;
       }
 
-      sendTaskMessage({
-        type: "navigation_command",
-        command: "pause",
-        confirmed: true
-      });
-    });
-
-    resumeTaskButton.addEventListener("click", () => {
-      sendTaskMessage({
-        type: "navigation_command",
-        command: "resume",
-        confirmed: false
-      });
-    });
-
-    stopTaskButton.addEventListener("click", () => {
-      sendTaskMessage({
-        type: "navigation_command",
-        command: "stop",
-        confirmed: false
-      });
-    });
+      event.preventDefault();
+      stopMotion();
+    }
 
     sourceButtons.forEach(button => {
       button.addEventListener("click", () => {
         const source = button.dataset.source;
-        const label = labels[source] || source;
 
-        const accepted = window.confirm(
-          `Fahrquelle wirklich auf „${label}“ umschalten?\n\n`
-          + "Der Roboter erhält beim Umschalten zunächst einen Stoppbefehl."
-        );
-
-        if (!accepted) {
+        if (!connected || websocket?.readyState !== WebSocket.OPEN) {
+          showFeedback("Keine Verbindung zum Webteleop-Server.", false);
           return;
         }
-
-        if (
-          !connected
-          || websocket.readyState !== WebSocket.OPEN
-        ) {
-          showFeedback(
-            "Keine Verbindung zum Webteleop-Server.",
-            false
-          );
-          return;
-        }
-
-        stopMotion();
 
         websocket.send(
           JSON.stringify({
@@ -1102,62 +805,64 @@
       });
     });
 
-    controlArea.addEventListener(
-      "pointerdown",
-      event => {
-        if (activeSource !== "webteleop") {
-          return;
-        }
+    settingsButton.addEventListener("click", showSettings);
+    backButton.addEventListener("click", showTeleop);
 
-        event.preventDefault();
+    vMaxSlider.addEventListener("input", updateSliderLabels);
+    wMaxSlider.addEventListener("input", updateSliderLabels);
 
-        active = true;
-        pointerId = event.pointerId;
-        controlArea.setPointerCapture(pointerId);
+    setPatternButton.addEventListener("click", () => {
+      const pattern = patternInput.value.trim();
 
-        const point = getLocalPoint(event);
-        drawJoystickStart(point.x, point.y);
-      },
-      { passive: false }
-    );
-
-    controlArea.addEventListener(
-      "pointermove",
-      event => {
-        if (!active || event.pointerId !== pointerId) {
-          return;
-        }
-
-        event.preventDefault();
-
-        const point = getLocalPoint(event);
-        drawJoystickMove(point.x, point.y);
-      },
-      { passive: false }
-    );
-
-    controlArea.addEventListener(
-      "pointerup",
-      event => {
-        if (event.pointerId === pointerId) {
-          stopMotion();
-        }
+      if (pattern.length === 0) {
+        showTaskFeedback("Pattern darf nicht leer sein.", false);
+        return;
       }
-    );
 
-    controlArea.addEventListener(
-      "pointercancel",
-      event => {
-        if (event.pointerId === pointerId) {
-          stopMotion();
-        }
+      sendTaskMessage({
+        type: "set_navigation_pattern",
+        pattern
+      });
+    });
+
+    startTaskButton.addEventListener("click", () => {
+      if (activeSource !== "task1") {
+        showTaskFeedback(
+          "Task 1 muss als aktive Quelle ausgewählt sein.",
+          false
+        );
+        return;
       }
-    );
 
-    controlArea.addEventListener(
-      "lostpointercapture",
+      sendTaskMessage({ type: "start_navigation" });
+    });
+
+    pauseTaskButton.addEventListener("click", () => {
+      sendTaskMessage({ type: "pause_navigation" });
+    });
+
+    resumeTaskButton.addEventListener("click", () => {
+      sendTaskMessage({ type: "resume_navigation" });
+    });
+
+    stopTaskButton.addEventListener("click", () => {
+      sendTaskMessage({ type: "abort_navigation" });
+    });
+
+    joystick.addEventListener("pointerdown", handlePointerDown);
+    joystick.addEventListener("pointermove", handlePointerMove);
+    joystick.addEventListener("pointerup", handlePointerUp);
+    joystick.addEventListener("pointercancel", handlePointerUp);
+    joystick.addEventListener("lostpointercapture", () => {
+      if (active) {
+        stopMotion();
+      }
+    });
+
+    document.addEventListener(
+      "visibilitychange",
       () => {
-        if (active) {
+        if (document.hidden && active) {
           stopMotion();
         }
       }
@@ -1174,7 +879,7 @@
 
     setInterval(
       () => {
-        if (connected) {
+        if (connected && !active && activeSource !== "webteleop") {
           sendTaskMessage({ type: "request_navigation_status" });
         }
       },
@@ -1193,20 +898,13 @@
           1
         );
 
-        const xRelative = clamp(
-          (stickX - padX) / MAX_VECTOR_LENGTH,
-          -1,
-          1
-        );
-
-        const yRelative = clamp(
-          (stickY - padY) / MAX_VECTOR_LENGTH,
-          -1,
-          1
-        );
+        const yRelative = -stickY / MAX_VECTOR_LENGTH;
+        const xRelative = stickX / MAX_VECTOR_LENGTH;
 
         const linearVelocity =
-          -yRelative * speedRatio * currentVMax();
+          yRelative
+          * speedRatio
+          * currentVMax();
 
         const steeringDirection =
           linearVelocity < 0 ? -1 : 1;
@@ -1217,18 +915,18 @@
           * speedRatio
           * currentWMax();
 
-        send(linearVelocity, angularVelocity);
-
         outElement.textContent =
-          `v=${linearVelocity.toFixed(2)} m/s, `
-          + `w=${angularVelocity.toFixed(2)} rad/s`;
+          `v: ${linearVelocity.toFixed(3)} m/s\n` +
+          `ω: ${angularVelocity.toFixed(3)} rad/s`;
+
+        sendCommand(linearVelocity, angularVelocity);
       },
       SEND_PERIOD_MS
     );
 
     updateSliderLabels();
-    connectWebSocket();
     updateActiveSource("unknown");
+    connectWebSocket();
   </script>
 </body>
 </html>
