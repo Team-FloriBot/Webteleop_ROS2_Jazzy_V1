@@ -111,6 +111,34 @@
       font-size: 0.9rem;
     }
 
+    .source-panel {
+      display: grid;
+      gap: 8px;
+    }
+
+    .source-panel summary {
+      list-style: none;
+      border-radius: 12px;
+      padding: 10px;
+      background: #e8edf5;
+      color: #17212b;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .source-panel summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .source-panel summary::after {
+      content: "▾";
+      float: right;
+    }
+
+    .source-panel[open] summary::after {
+      content: "▴";
+    }
+
     .source-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -168,8 +196,19 @@
     }
 
     .sliders {
-      display: grid;
+      display: none;
       gap: 10px;
+      width: min(520px, 100%);
+      padding: 10px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.90);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+      z-index: 3;
+      pointer-events: auto;
+    }
+
+    .sliders.visible {
+      display: grid;
     }
 
     .slider-line {
@@ -191,9 +230,13 @@
     .drive-area {
       min-height: 0;
       display: grid;
-      place-items: center;
+      grid-template-rows: auto 1fr auto;
+      align-items: center;
+      justify-items: center;
+      gap: 10px;
       position: relative;
       border-radius: 18px;
+      padding: 10px;
       background:
         radial-gradient(circle at center, #ffffff 0, #ffffff 34%, #e9eef6 35%, #e9eef6 100%);
       overflow: hidden;
@@ -330,6 +373,28 @@
     }
 
     @media (max-width: 420px) {
+      :root {
+        --pad-radius: 88px;
+        --stick-radius: 30px;
+      }
+
+      .page {
+        padding:
+          max(8px, env(safe-area-inset-top))
+          max(8px, env(safe-area-inset-right))
+          max(8px, env(safe-area-inset-bottom))
+          max(8px, env(safe-area-inset-left));
+      }
+
+      .view.active {
+        gap: 8px;
+      }
+
+      .top {
+        gap: 8px;
+        padding: 10px;
+      }
+
       .source-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -360,19 +425,28 @@
           <strong id="activeSourceMain">nicht bekannt</strong>
         </div>
 
-        <div class="source-grid" id="sourceButtonsMain">
-          <button class="source-button" data-source="none">Stop</button>
-          <button class="source-button" data-source="webteleop">Webteleop</button>
-          <button class="source-button" data-source="task1">Task 1</button>
-          <button class="source-button" data-source="task2">Task 2</button>
-          <button class="source-button" data-source="task3">Task 3</button>
-          <button class="source-button" data-source="task4">Task 4</button>
-          <button class="source-button" data-source="task5">Task 5</button>
-        </div>
+        <details id="sourcePanel" class="source-panel">
+          <summary>Quelle ändern</summary>
+          <div class="source-grid" id="sourceButtonsMain">
+            <button class="source-button" data-source="none">Stop</button>
+            <button class="source-button" data-source="webteleop">Webteleop</button>
+            <button class="source-button" data-source="task1">Task 1</button>
+            <button class="source-button" data-source="task2">Task 2</button>
+            <button class="source-button" data-source="task3">Task 3</button>
+            <button class="source-button" data-source="task4">Task 4</button>
+            <button class="source-button" data-source="task5">Task 5</button>
+          </div>
+        </details>
 
         <div id="selectionFeedback" class="selection-feedback"></div>
 
-        <div class="sliders">
+        <button id="settingsButton" class="nav-button">
+          Einstellungen / Tasks
+        </button>
+      </section>
+
+      <section id="controlArea" class="drive-area">
+        <div id="teleopSliders" class="sliders">
           <label class="slider-line">
             <span class="slider-label">
               <span>v<sub>max</sub></span>
@@ -404,12 +478,6 @@
           </label>
         </div>
 
-        <button id="settingsButton" class="nav-button">
-          Einstellungen / Tasks
-        </button>
-      </section>
-
-      <section id="controlArea" class="drive-area">
         <div id="controlDisabled" class="drive-disabled active">
           Webteleop ist nicht als aktive Quelle ausgewählt.
         </div>
@@ -513,6 +581,7 @@ v: 0.000 m/s
     const settingsView = document.getElementById("settingsView");
     const settingsButton = document.getElementById("settingsButton");
     const backButton = document.getElementById("backButton");
+    const sourcePanel = document.getElementById("sourcePanel");
     const wsStatus = document.getElementById("wsStatus");
     const activeSourceMain = document.getElementById("activeSourceMain");
     const activeSourceSettings = document.getElementById("activeSourceSettings");
@@ -521,6 +590,7 @@ v: 0.000 m/s
     );
     const feedback = document.getElementById("selectionFeedback");
     const outElement = document.getElementById("out");
+    const teleopSliders = document.getElementById("teleopSliders");
     const vMaxSlider = document.getElementById("vMaxSlider");
     const vMaxValue = document.getElementById("vMaxValue");
     const wMaxSlider = document.getElementById("wMaxSlider");
@@ -540,9 +610,6 @@ v: 0.000 m/s
     const activeStep = document.getElementById("activeStep");
     const taskFeedback = document.getElementById("taskFeedback");
 
-    const PAD_RADIUS = 100.0;
-    const STICK_RADIUS = 34.0;
-    const MAX_VECTOR_LENGTH = PAD_RADIUS - STICK_RADIUS;
     const SEND_PERIOD_MS = 50;
 
     let websocket = null;
@@ -637,6 +704,7 @@ v: 0.000 m/s
 
       const teleopEnabled = source === "webteleop";
       controlDisabled.classList.toggle("active", !teleopEnabled);
+      teleopSliders.classList.toggle("visible", teleopEnabled);
 
       if (!teleopEnabled) {
         stopMotion();
@@ -673,6 +741,11 @@ v: 0.000 m/s
         if (message.type === "selection_result") {
           updateActiveSource(message.active_source);
           showFeedback(message.message, message.success);
+
+          if (message.success && sourcePanel) {
+            sourcePanel.open = false;
+          }
+
           sendTaskMessage({ type: "request_navigation_status" });
         }
 
@@ -736,16 +809,29 @@ v: 0.000 m/s
       sendCommand(0.0, 0.0);
     }
 
-    function updateJoystickFromPointer(clientX, clientY) {
-      const rect = joystick.getBoundingClientRect();
+    function joystickMetrics() {
+      const padRect = joystick.getBoundingClientRect();
+      const stickRect = stick.getBoundingClientRect();
+      const padRadius = padRect.width / 2.0;
+      const stickRadius = stickRect.width / 2.0;
 
-      padX = rect.left + PAD_RADIUS;
-      padY = rect.top + PAD_RADIUS;
+      return {
+        padRect,
+        padRadius,
+        maxVectorLength: Math.max(1.0, padRadius - stickRadius)
+      };
+    }
+
+    function updateJoystickFromPointer(clientX, clientY) {
+      const { padRect, padRadius, maxVectorLength } = joystickMetrics();
+
+      padX = padRect.left + padRadius;
+      padY = padRect.top + padRadius;
 
       const dx = clientX - padX;
       const dy = clientY - padY;
       const length = Math.hypot(dx, dy);
-      const limitedLength = Math.min(length, MAX_VECTOR_LENGTH);
+      const limitedLength = Math.min(length, maxVectorLength);
       const angle = Math.atan2(dy, dx);
 
       stickX = Math.cos(angle) * limitedLength;
@@ -753,8 +839,8 @@ v: 0.000 m/s
       vectorLength = limitedLength;
       vectorAngle = angle;
 
-      stick.style.left = `${PAD_RADIUS + stickX}px`;
-      stick.style.top = `${PAD_RADIUS + stickY}px`;
+      stick.style.left = `${padRadius + stickX}px`;
+      stick.style.top = `${padRadius + stickY}px`;
     }
 
     function handlePointerDown(event) {
@@ -892,14 +978,16 @@ v: 0.000 m/s
           return;
         }
 
+        const { maxVectorLength } = joystickMetrics();
+
         const speedRatio = clamp(
-          vectorLength / MAX_VECTOR_LENGTH,
+          vectorLength / maxVectorLength,
           0,
           1
         );
 
-        const yRelative = -stickY / MAX_VECTOR_LENGTH;
-        const xRelative = stickX / MAX_VECTOR_LENGTH;
+        const yRelative = -stickY / maxVectorLength;
+        const xRelative = stickX / maxVectorLength;
 
         const linearVelocity =
           yRelative
