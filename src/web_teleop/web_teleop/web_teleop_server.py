@@ -20,6 +20,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Path as RosPath
+from visualization_msgs.msg import Marker
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
 from rclpy.executors import MultiThreadedExecutor
@@ -95,6 +96,7 @@ class WebTeleopNode(Node):
         self._runtime_lock = threading.Lock()
         self._running_task: str | None = None
         self._latest_task4_plan: dict[str, Any] | None = None
+        self._latest_task4_polygon: dict[str, Any] | None = None
 
         self._cmd_vel_topic = self.declare_parameter(
             "cmd_vel_topic",
@@ -212,6 +214,12 @@ class WebTeleopNode(Node):
             RosPath,
             "/plan",
             self._task4_plan_callback,
+            10,
+        )
+        self._task4_polygon_subscription = self.create_subscription(
+            Marker,
+            "/coverage_polygon_marker",
+            self._task4_polygon_callback,
             10,
         )
 
@@ -871,6 +879,40 @@ class WebTeleopNode(Node):
         self._latest_task4_plan = payload
         self._schedule_broadcast(payload)
 
+
+    def _task4_polygon_callback(self, message: Marker) -> None:
+        if message.ns and message.ns != "coverage_polygon":
+            return
+
+        points = [
+            {
+                "x": float(point.x),
+                "y": float(point.y),
+            }
+            for point in message.points
+        ]
+
+        if len(points) > 1:
+            first = points[0]
+            last = points[-1]
+            if math.isclose(first["x"], last["x"], abs_tol=1e-9) and math.isclose(
+                first["y"],
+                last["y"],
+                abs_tol=1e-9,
+            ):
+                points = points[:-1]
+
+        if len(points) < 3:
+            return
+
+        payload = {
+            "type": "task4_polygon",
+            "frame_id": message.header.frame_id,
+            "points": points,
+        }
+        self._latest_task4_polygon = payload
+        self._schedule_broadcast(payload)
+
     def _trigger_task_client(
         self,
         task: str,
@@ -1091,6 +1133,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     node = ros_node
     if node is not None:
         await websocket.send_text(json.dumps(node.status_payload()))
+        if node._latest_task4_polygon is not None:
+            await websocket.send_text(json.dumps(node._latest_task4_polygon))
         if node._latest_task4_plan is not None:
             await websocket.send_text(json.dumps(node._latest_task4_plan))
 
