@@ -426,6 +426,13 @@
       stroke-width: 2;
     }
 
+    .task4-svg .planned-path {
+      fill: none;
+      stroke: #00a2c7;
+      stroke-width: 2;
+      stroke-dasharray: 4 3;
+    }
+
     .task4-svg .start-point {
       fill: #1458d4;
     }
@@ -690,6 +697,7 @@
               </marker>
             </defs>
             <polygon id="task4Polygon" class="field" points="70,130 250,130 250,50 70,50"></polygon>
+            <polyline id="task4PlanLine" class="planned-path" points=""></polyline>
             <line id="task4HeadingLine" class="edge-arrow" x1="70" y1="130" x2="125" y2="130"></line>
             <circle id="task4StartPoint" class="start-point" cx="70" cy="130" r="5"></circle>
             <polygon id="task4Robot" class="robot-heading" points="70,122 82,130 70,138"></polygon>
@@ -697,6 +705,7 @@
           <div class="task-status">
             <div>Startpunkt: <strong id="task4StartText">0.00 / 0.00 m</strong></div>
             <div>Ausrichtung: <strong id="task4HeadingText">0.0° entlang Punkt 1 → Punkt 2</strong></div>
+            <div>Geplanter Pfad: <strong id="task4PlanText">noch nicht empfangen</strong></div>
           </div>
         </div>
 
@@ -754,6 +763,8 @@
   const pauseTask3Button = document.getElementById("pauseTask3Button");
   const resumeTask3Button = document.getElementById("resumeTask3Button");
   const stopTask3Button = document.getElementById("stopTask3Button");
+  const task2Feedback = document.getElementById("task2Feedback");
+  const task3Feedback = document.getElementById("task3Feedback");
   const task4Feedback = document.getElementById("task4Feedback");
   const task4CornersInput = document.getElementById("task4CornersInput");
   const setTask4CornersButton = document.getElementById("setTask4CornersButton");
@@ -763,14 +774,19 @@
   const resumeTask4Button = document.getElementById("resumeTask4Button");
   const stopTask4Button = document.getElementById("stopTask4Button");
   const task4Polygon = document.getElementById("task4Polygon");
+  const task4PlanLine = document.getElementById("task4PlanLine");
   const task4HeadingLine = document.getElementById("task4HeadingLine");
   const task4StartPoint = document.getElementById("task4StartPoint");
   const task4Robot = document.getElementById("task4Robot");
   const task4StartText = document.getElementById("task4StartText");
   const task4HeadingText = document.getElementById("task4HeadingText");
+  const task4PlanText = document.getElementById("task4PlanText");
   const missionState = document.getElementById("missionState");
   const activePattern = document.getElementById("activePattern");
   const activeStep = document.getElementById("activeStep");
+
+  let task4PlanPoints = [];
+  let task4PlanFrame = "";
 
   const SEND_PERIOD_MS = 50;
 
@@ -836,8 +852,6 @@
     return true;
   }
 
-
-
   function parseTask4Corners() {
     const values = task4CornersInput.value
       .trim()
@@ -869,10 +883,11 @@
     }
 
     const points = pointsFromFlatCoords(coords);
-    const minX = Math.min(...points.map(point => point.x));
-    const maxX = Math.max(...points.map(point => point.x));
-    const minY = Math.min(...points.map(point => point.y));
-    const maxY = Math.max(...points.map(point => point.y));
+    const displayedPoints = points.concat(task4PlanPoints);
+    const minX = Math.min(...displayedPoints.map(point => point.x));
+    const maxX = Math.max(...displayedPoints.map(point => point.x));
+    const minY = Math.min(...displayedPoints.map(point => point.y));
+    const maxY = Math.max(...displayedPoints.map(point => point.y));
     const spanX = Math.max(0.001, maxX - minX);
     const spanY = Math.max(0.001, maxY - minY);
     const padding = 24;
@@ -889,6 +904,12 @@
 
     const svgPoints = points.map(toSvg);
     task4Polygon.setAttribute("points", svgPoints.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" "));
+
+    const svgPlanPoints = task4PlanPoints.map(toSvg);
+    task4PlanLine.setAttribute("points", svgPlanPoints.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" "));
+    task4PlanText.textContent = task4PlanPoints.length > 0
+      ? `${task4PlanPoints.length} Punkte in ${task4PlanFrame || "unbekanntem Frame"}`
+      : "noch nicht empfangen";
 
     const start = points[0];
     const second = points[1];
@@ -1062,6 +1083,15 @@
         updateRuntimeState(message);
         showFeedback(task4Feedback, message.message, message.success);
         sendTaskMessage({ type: "request_selector_status" }, false);
+      }
+
+      if (message.type === "task4_plan") {
+        task4PlanPoints = Array.isArray(message.poses)
+          ? message.poses.map(pose => ({ x: Number(pose.x), y: Number(pose.y) })).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
+          : [];
+        task4PlanFrame = message.frame_id || "";
+        updateTask4Preview();
+        showFeedback(task4Feedback, `Geplanten Pfad empfangen: ${message.pose_count ?? task4PlanPoints.length} Punkte.`, true);
       }
     };
 
