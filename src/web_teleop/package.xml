@@ -15,6 +15,7 @@
   <depend>std_srvs</depend>
   <depend>cmd_vel_selector</depend>
   <depend>fre2026_task_interfaces</depend>
+  <depend>slam_toolbox</depend>
 
   <exec_depend>ament_index_python</exec_depend>
 
