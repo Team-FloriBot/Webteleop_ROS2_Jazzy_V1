@@ -26,6 +26,7 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
+from slam_toolbox.srv import Reset as SlamToolboxReset
 import uvicorn
 
 
@@ -157,6 +158,10 @@ class WebTeleopNode(Node):
         self._reset_navigation_client = self.create_client(
             Trigger,
             "/reset_navigation",
+        )
+        self._slam_reset_client = self.create_client(
+            SlamToolboxReset,
+            "/slam_toolbox/reset",
         )
         self._task2_start_client = self.create_client(
             Trigger,
@@ -606,6 +611,44 @@ class WebTeleopNode(Node):
                 payload = {
                     "type": "task_result",
                     "command": "reset",
+                    "success": False,
+                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
+                }
+
+            self._schedule_send(websocket, payload)
+
+        future.add_done_callback(finish)
+
+    def reset_slam_map(self, websocket: WebSocket) -> None:
+        if not self._service_ready(self._slam_reset_client):
+            self._schedule_send(
+                websocket,
+                {
+                    "type": "development_result",
+                    "command": "reset_slam_map",
+                    "success": False,
+                    "message": "SLAM-Reset-Service '/slam_toolbox/reset' ist nicht erreichbar.",
+                },
+            )
+            return
+
+        request = SlamToolboxReset.Request()
+        request.pause_new_measurements = False
+        future = self._slam_reset_client.call_async(request)
+
+        def finish(done_future: Any) -> None:
+            try:
+                done_future.result()
+                payload = {
+                    "type": "development_result",
+                    "command": "reset_slam_map",
+                    "success": True,
+                    "message": "SLAM-Map wurde über '/slam_toolbox/reset' zurückgesetzt.",
+                }
+            except Exception as exc:
+                payload = {
+                    "type": "development_result",
+                    "command": "reset_slam_map",
                     "success": False,
                     "message": f"Serviceaufruf fehlgeschlagen: {exc}",
                 }
@@ -1070,6 +1113,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
             elif message_type == "reset_navigation":
                 node.reset_navigation(websocket)
+
+            elif message_type == "reset_slam_map":
+                node.reset_slam_map(websocket)
 
             elif message_type == "set_task4_polygon":
                 raw_coords = data.get("polygon_coords", [])
