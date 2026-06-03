@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -17,13 +18,14 @@ from fre2026_task_interfaces.srv import GetNavigationStatus, SetNavigationPatter
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Path as RosPath
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
-from std_srvs.srv import Trigger
+from std_srvs.srv import SetBool, Trigger
 import uvicorn
 
 
@@ -91,6 +93,7 @@ class WebTeleopNode(Node):
         self._moving_command_active = False
         self._runtime_lock = threading.Lock()
         self._running_task: str | None = None
+        self._latest_task4_plan: dict[str, Any] | None = None
 
         self._cmd_vel_topic = self.declare_parameter(
             "cmd_vel_topic",
@@ -195,21 +198,16 @@ class WebTeleopNode(Node):
             Trigger,
             "/trigger_coverage_planning",
         )
-        self._task4_start_client = self.create_client(
-            Trigger,
-            "/task4/start_navigation",
+        self._task4_set_active_client = self.create_client(
+            SetBool,
+            "/pure_pursuit_node/set_active",
         )
-        self._task4_stop_client = self.create_client(
-            Trigger,
-            "/task4/stop_navigation",
-        )
-        self._task4_pause_client = self.create_client(
-            Trigger,
-            "/task4/pause_navigation",
-        )
-        self._task4_resume_client = self.create_client(
-            Trigger,
-            "/task4/resume_navigation",
+
+        self._task4_plan_subscription = self.create_subscription(
+            RosPath,
+            "/plan",
+            self._task4_plan_callback,
+            10,
         )
 
         self._publish_timer = self.create_timer(
@@ -302,7 +300,6 @@ class WebTeleopNode(Node):
             self._last_cmd_time = time.monotonic()
             self._moving_command_active = False
 
-        # Publish the stop immediately; the 20 Hz timer then keeps publishing zero.
         self._publish_twist(0.0, 0.0)
 
     def select_source(self, source: str, websocket: WebSocket) -> None:
@@ -366,7 +363,7 @@ class WebTeleopNode(Node):
                     ),
                     **self._runtime_fields(),
                 }
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 payload = {
                     "type": "selection_result",
                     "success": False,
@@ -414,7 +411,7 @@ class WebTeleopNode(Node):
                     "can_start": bool(response.can_start),
                     "can_resume": bool(response.can_resume),
                 }
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 payload = {
                     "type": "task_result",
                     "command": "set_pattern",
@@ -462,7 +459,7 @@ class WebTeleopNode(Node):
                     "can_abort": bool(response.can_abort),
                     **self._runtime_fields(),
                 }
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 payload = {
                     "type": "navigation_status",
                     "success": False,
@@ -558,7 +555,7 @@ class WebTeleopNode(Node):
                     "message": response.message,
                     **self._runtime_fields(),
                 }
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 payload = {
                     "type": "task_result",
                     "command": command,
@@ -572,7 +569,6 @@ class WebTeleopNode(Node):
             self._schedule_send(websocket, payload)
 
         future.add_done_callback(finish)
-
 
     def reset_navigation(self, websocket: WebSocket) -> None:
         if not self._service_ready(self._reset_navigation_client):
@@ -602,7 +598,7 @@ class WebTeleopNode(Node):
                     "message": response.message,
                     **self._runtime_fields(),
                 }
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 payload = {
                     "type": "task_result",
                     "command": "reset",
@@ -673,7 +669,7 @@ class WebTeleopNode(Node):
                     "success": success,
                     "message": message,
                 }
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 payload = {
                     "type": "task4_result",
                     "command": "set_polygon",
@@ -739,33 +735,122 @@ class WebTeleopNode(Node):
         )
 
     def trigger_task4_command(self, command: str, websocket: WebSocket) -> None:
-        clients = {
-            "start": self._task4_start_client,
-            "stop": self._task4_stop_client,
-            "pause": self._task4_pause_client,
-            "resume": self._task4_resume_client,
+        values = {
+            "start": True,
+            "resume": True,
+            "pause": False,
+            "stop": False,
         }
-        client = clients.get(command)
-        if client is None:
+        active_value = values.get(command)
+        if active_value is None:
             self._schedule_send(
                 websocket,
                 {
                     "type": "task4_result",
+                    "task": "task4",
                     "command": command,
                     "success": False,
                     "message": "Unbekannter Task-4-Befehl.",
+                    **self._runtime_fields(),
                 },
             )
             return
 
-        self._trigger_task_client(
-            "task4",
-            client,
-            command,
-            f"Task-4-Service '{command}' ist nicht erreichbar.",
-            "task4_result",
-            websocket,
-        )
+        if command == "start":
+            ok, message = self._begin_task_start("task4")
+            if not ok:
+                self._schedule_send(
+                    websocket,
+                    {
+                        "type": "task4_result",
+                        "task": "task4",
+                        "command": command,
+                        "success": False,
+                        "message": message,
+                        **self._runtime_fields(),
+                    },
+                )
+                return
+
+        if not self._service_ready(self._task4_set_active_client):
+            if command == "start":
+                self._finish_task_start("task4", False)
+            self._schedule_send(
+                websocket,
+                {
+                    "type": "task4_result",
+                    "task": "task4",
+                    "command": command,
+                    "success": False,
+                    "message": "Task-4-Service '/pure_pursuit_node/set_active' ist nicht erreichbar.",
+                    **self._runtime_fields(),
+                },
+            )
+            return
+
+        request = SetBool.Request()
+        request.data = active_value
+        future = self._task4_set_active_client.call_async(request)
+
+        def finish(done_future: Any) -> None:
+            try:
+                response = done_future.result()
+                success = bool(response.success)
+                if command == "start":
+                    self._finish_task_start("task4", success)
+                elif command == "stop" and success:
+                    self._finish_task_stop("task4", True)
+
+                payload = {
+                    "type": "task4_result",
+                    "task": "task4",
+                    "command": command,
+                    "success": success,
+                    "message": response.message,
+                    **self._runtime_fields(),
+                }
+            except Exception as exc:
+                if command == "start":
+                    self._finish_task_start("task4", False)
+                payload = {
+                    "type": "task4_result",
+                    "task": "task4",
+                    "command": command,
+                    "success": False,
+                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
+                    **self._runtime_fields(),
+                }
+
+            self._schedule_send(websocket, payload)
+
+        future.add_done_callback(finish)
+
+    def _task4_plan_callback(self, message: RosPath) -> None:
+        poses = []
+        original_count = len(message.poses)
+        step = max(1, original_count // 1000)
+
+        for pose_stamped in message.poses[::step]:
+            pose = pose_stamped.pose
+            q = pose.orientation
+            siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+            cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+            theta = math.atan2(siny_cosp, cosy_cosp)
+            poses.append({
+                "x": float(pose.position.x),
+                "y": float(pose.position.y),
+                "theta": float(theta),
+            })
+
+        payload = {
+            "type": "task4_plan",
+            "frame_id": message.header.frame_id,
+            "pose_count": original_count,
+            "displayed_pose_count": len(poses),
+            "poses": poses,
+        }
+        self._latest_task4_plan = payload
+        self._schedule_broadcast(payload)
 
     def _trigger_task_client(
         self,
@@ -826,7 +911,7 @@ class WebTeleopNode(Node):
                     "message": response.message,
                     **self._runtime_fields(),
                 }
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 if command == "start":
                     self._finish_task_start(task, False)
                 payload = {
@@ -872,7 +957,7 @@ class WebTeleopNode(Node):
                     "success": bool(response.success),
                     "message": response.message,
                 }
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 payload = {
                     "type": "task4_result",
                     "command": command,
@@ -987,6 +1072,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     node = ros_node
     if node is not None:
         await websocket.send_text(json.dumps(node.status_payload()))
+        if node._latest_task4_plan is not None:
+            await websocket.send_text(json.dumps(node._latest_task4_plan))
 
     try:
         while True:
