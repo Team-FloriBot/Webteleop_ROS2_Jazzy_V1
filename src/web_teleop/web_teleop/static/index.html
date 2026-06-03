@@ -852,6 +852,10 @@
     return true;
   }
 
+  function confirmTask4Action(actionText) {
+    return window.confirm(`Task 4: ${actionText} wirklich ausführen?`);
+  }
+
   function parseTask4Corners() {
     const values = task4CornersInput.value
       .trim()
@@ -1365,6 +1369,12 @@
     try {
       const polygon_coords = parseTask4Corners();
       updateTask4Preview();
+
+      if (!confirmTask4Action("Eckpunkte setzen")) {
+        showFeedback(task4Feedback, "Task-4-Eckpunkte wurden nicht gesetzt.", false);
+        return;
+      }
+
       sendTaskMessage({ type: "set_task4_polygon", polygon_coords });
     } catch (error) {
       showFeedback(task4Feedback, error.message, false);
@@ -1372,6 +1382,11 @@
   });
 
   planTask4Button.addEventListener("click", () => {
+    if (!confirmTask4Action("Planung starten")) {
+      showFeedback(task4Feedback, "Task-4-Planung abgebrochen.", false);
+      return;
+    }
+
     sendTaskMessage({ type: "trigger_task4_planning" });
   });
 
@@ -1386,18 +1401,38 @@
       return;
     }
 
+    if (!confirmTask4Action("Navigation starten")) {
+      showFeedback(task4Feedback, "Task-4-Start abgebrochen.", false);
+      return;
+    }
+
     sendTaskMessage({ type: "task4_command", command: "start" });
   });
 
   pauseTask4Button.addEventListener("click", () => {
+    if (!confirmTask4Action("Navigation unterbrechen")) {
+      showFeedback(task4Feedback, "Task-4-Pause abgebrochen.", false);
+      return;
+    }
+
     sendTaskMessage({ type: "task4_command", command: "pause" });
   });
 
   resumeTask4Button.addEventListener("click", () => {
+    if (!confirmTask4Action("Navigation fortsetzen")) {
+      showFeedback(task4Feedback, "Task-4-Fortsetzen abgebrochen.", false);
+      return;
+    }
+
     sendTaskMessage({ type: "task4_command", command: "resume" });
   });
 
   stopTask4Button.addEventListener("click", () => {
+    if (!confirmTask4Action("Navigation stoppen")) {
+      showFeedback(task4Feedback, "Task-4-Stop abgebrochen.", false);
+      return;
+    }
+
     sendTaskMessage({ type: "task4_command", command: "stop" });
   });
 
