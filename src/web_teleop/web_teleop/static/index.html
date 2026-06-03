@@ -803,6 +803,8 @@
 
   let task4PlanPoints = [];
   let task4PlanFrame = "";
+  let task4PolygonPoints = [];
+  let task4PolygonFrame = "";
 
   const SEND_PERIOD_MS = 50;
 
@@ -894,6 +896,25 @@
     return points;
   }
 
+  function normalizeAngleDegrees(angle) {
+    let normalized = angle;
+    while (normalized > 180) {
+      normalized -= 360;
+    }
+    while (normalized <= -180) {
+      normalized += 360;
+    }
+    return normalized;
+  }
+
+  function validPoint(point) {
+    return point && Number.isFinite(point.x) && Number.isFinite(point.y);
+  }
+
+  function pointsToSvgAttribute(points) {
+    return points.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+  }
+
   function updateTask4Preview() {
     let coords;
     try {
@@ -902,8 +923,24 @@
       return;
     }
 
-    const points = pointsFromFlatCoords(coords);
-    const displayedPoints = points.concat(task4PlanPoints);
+    const inputPoints = pointsFromFlatCoords(coords);
+    const havePlan = task4PlanPoints.length > 0;
+    const haveTargetPolygon = task4PolygonPoints.length >= 3
+      && (!task4PlanFrame || !task4PolygonFrame || task4PolygonFrame === task4PlanFrame);
+    const polygonPoints = haveTargetPolygon ? task4PolygonPoints : (havePlan ? [] : inputPoints);
+    const displayedPoints = polygonPoints.concat(task4PlanPoints);
+
+    if (displayedPoints.length === 0) {
+      task4Polygon.setAttribute("points", "");
+      task4PlanLine.setAttribute("points", "");
+      task4StartText.textContent = "nicht verfügbar";
+      task4HeadingText.textContent = "nicht verfügbar";
+      task4PlanText.textContent = havePlan
+        ? `${task4PlanPoints.length} Punkte in ${task4PlanFrame || "unbekanntem Frame"}; Polygon noch nicht empfangen`
+        : "noch nicht empfangen";
+      return;
+    }
+
     const minX = Math.min(...displayedPoints.map(point => point.x));
     const maxX = Math.max(...displayedPoints.map(point => point.x));
     const minY = Math.min(...displayedPoints.map(point => point.y));
@@ -922,21 +959,40 @@
       y: offsetY + (maxY - point.y) * scale,
     });
 
-    const svgPoints = points.map(toSvg);
-    task4Polygon.setAttribute("points", svgPoints.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" "));
+    const svgPolygonPoints = polygonPoints.map(toSvg);
+    task4Polygon.setAttribute("points", pointsToSvgAttribute(svgPolygonPoints));
 
     const svgPlanPoints = task4PlanPoints.map(toSvg);
-    task4PlanLine.setAttribute("points", svgPlanPoints.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" "));
-    task4PlanText.textContent = task4PlanPoints.length > 0
-      ? `${task4PlanPoints.length} Punkte in ${task4PlanFrame || "unbekanntem Frame"}`
-      : "noch nicht empfangen";
+    task4PlanLine.setAttribute("points", pointsToSvgAttribute(svgPlanPoints));
 
-    const start = points[0];
-    const second = points[1];
-    const startSvg = svgPoints[0];
-    const secondSvg = svgPoints[1];
-    const heading = Math.atan2(second.y - start.y, second.x - start.x);
-    const svgHeading = Math.atan2(secondSvg.y - startSvg.y, secondSvg.x - startSvg.x);
+    if (havePlan) {
+      const frameText = task4PlanFrame || "unbekanntem Frame";
+      const polygonText = haveTargetPolygon ? "Polygon im selben Frame" : "Polygon noch nicht im Plan-Frame";
+      task4PlanText.textContent = `${task4PlanPoints.length} Punkte in ${frameText}; ${polygonText}`;
+    } else {
+      task4PlanText.textContent = "noch nicht empfangen";
+    }
+
+    const start = havePlan && validPoint(task4PlanPoints[0]) ? task4PlanPoints[0] : inputPoints[0];
+    const second = havePlan && validPoint(task4PlanPoints[1]) ? task4PlanPoints[1] : inputPoints[1];
+    const startSvg = toSvg(start);
+    const secondSvg = validPoint(second) ? toSvg(second) : null;
+
+    let heading = Number.isFinite(start.theta) ? start.theta : null;
+    if (heading === null && validPoint(second)) {
+      heading = Math.atan2(second.y - start.y, second.x - start.x);
+    }
+    if (heading === null) {
+      heading = 0.0;
+    }
+
+    let svgHeading;
+    if (secondSvg !== null && !Number.isFinite(start.theta)) {
+      svgHeading = Math.atan2(secondSvg.y - startSvg.y, secondSvg.x - startSvg.x);
+    } else {
+      svgHeading = -heading;
+    }
+
     const arrowLength = 46;
     const arrowEnd = {
       x: startSvg.x + arrowLength * Math.cos(svgHeading),
@@ -964,10 +1020,12 @@
       x: startSvg.x + robotWidth * Math.cos(svgHeading - 2.35),
       y: startSvg.y + robotWidth * Math.sin(svgHeading - 2.35),
     };
-    task4Robot.setAttribute("points", `${tip.x.toFixed(1)},${tip.y.toFixed(1)} ${left.x.toFixed(1)},${left.y.toFixed(1)} ${right.x.toFixed(1)},${right.y.toFixed(1)}`);
+    task4Robot.setAttribute("points", `${tip.x.toFixed(1)},${tip.y.toFixed(1)} ${left.x.toFixed(1)},${left.y.toFixed(1)} ${right.x.toFixed(1)}`);
 
-    task4StartText.textContent = `${start.x.toFixed(2)} / ${start.y.toFixed(2)} m`;
-    task4HeadingText.textContent = `${(heading * 180 / Math.PI).toFixed(1)}° entlang Punkt 1 → Punkt 2`;
+    const startFrame = havePlan ? (task4PlanFrame || "Plan-Frame") : "Eingabe/base_link";
+    const headingSource = havePlan ? "Planstart" : "Punkt 1 → Punkt 2";
+    task4StartText.textContent = `${start.x.toFixed(2)} / ${start.y.toFixed(2)} m (${startFrame})`;
+    task4HeadingText.textContent = `${normalizeAngleDegrees(heading * 180 / Math.PI).toFixed(1)}° ${headingSource}`;
   }
 
   function taskIsBlocked(taskId) {
@@ -1107,9 +1165,21 @@
         showFeedback(developmentFeedback, message.message, message.success);
       }
 
+      if (message.type === "task4_polygon") {
+        task4PolygonPoints = Array.isArray(message.points)
+          ? message.points
+            .map(point => ({ x: Number(point.x), y: Number(point.y) }))
+            .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
+          : [];
+        task4PolygonFrame = message.frame_id || "";
+        updateTask4Preview();
+      }
+
       if (message.type === "task4_plan") {
         task4PlanPoints = Array.isArray(message.poses)
-          ? message.poses.map(pose => ({ x: Number(pose.x), y: Number(pose.y) })).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
+          ? message.poses
+            .map(pose => ({ x: Number(pose.x), y: Number(pose.y), theta: Number(pose.theta) }))
+            .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
           : [];
         task4PlanFrame = message.frame_id || "";
         updateTask4Preview();
@@ -1381,7 +1451,13 @@
   resumeTask3Button.addEventListener("click", () => sendGenericTaskCommand("task3", "resume", task3Feedback));
   stopTask3Button.addEventListener("click", () => sendGenericTaskCommand("task3", "stop", task3Feedback));
 
-  task4CornersInput.addEventListener("input", updateTask4Preview);
+  task4CornersInput.addEventListener("input", () => {
+    task4PlanPoints = [];
+    task4PlanFrame = "";
+    task4PolygonPoints = [];
+    task4PolygonFrame = "";
+    updateTask4Preview();
+  });
 
   setTask4CornersButton.addEventListener("click", () => {
     try {
