@@ -978,20 +978,26 @@
     const startSvg = toSvg(start);
     const secondSvg = validPoint(second) ? toSvg(second) : null;
 
-    let heading = Number.isFinite(start.theta) ? start.theta : null;
-    if (heading === null && validPoint(second)) {
+    let heading = null;
+    let headingSource = "Orientierung aus Pose";
+
+    if (havePlan && validPoint(second)) {
       heading = Math.atan2(second.y - start.y, second.x - start.x);
-    }
-    if (heading === null) {
-      heading = 0.0;
+      headingSource = "Fahrtrichtung aus Plan-Tangente";
+    } else if (!havePlan && validPoint(second)) {
+      heading = Math.atan2(second.y - start.y, second.x - start.x);
+      headingSource = "Punkt 1 → Punkt 2";
+    } else if (Number.isFinite(start.theta)) {
+      heading = start.theta;
+      headingSource = havePlan ? "Orientierung aus Plan-Pose" : "Orientierung aus Pose";
     }
 
-    let svgHeading;
-    if (secondSvg !== null && !Number.isFinite(start.theta)) {
-      svgHeading = Math.atan2(secondSvg.y - startSvg.y, secondSvg.x - startSvg.x);
-    } else {
-      svgHeading = -heading;
+    if (heading === null) {
+      heading = 0.0;
+      headingSource = "Fallback";
     }
+
+    const svgHeading = -heading;
 
     const arrowLength = 46;
     const arrowEnd = {
@@ -1020,10 +1026,9 @@
       x: startSvg.x + robotWidth * Math.cos(svgHeading - 2.35),
       y: startSvg.y + robotWidth * Math.sin(svgHeading - 2.35),
     };
-    task4Robot.setAttribute("points", `${tip.x.toFixed(1)},${tip.y.toFixed(1)} ${left.x.toFixed(1)},${left.y.toFixed(1)} ${right.x.toFixed(1)}`);
+    task4Robot.setAttribute("points", `${tip.x.toFixed(1)},${tip.y.toFixed(1)} ${left.x.toFixed(1)},${left.y.toFixed(1)} ${right.x.toFixed(1)},${right.y.toFixed(1)}`);
 
     const startFrame = havePlan ? (task4PlanFrame || "Plan-Frame") : "Eingabe/base_link";
-    const headingSource = havePlan ? "Planstart" : "Punkt 1 → Punkt 2";
     task4StartText.textContent = `${start.x.toFixed(2)} / ${start.y.toFixed(2)} m (${startFrame})`;
     task4HeadingText.textContent = `${normalizeAngleDegrees(heading * 180 / Math.PI).toFixed(1)}° ${headingSource}`;
   }
