@@ -709,6 +709,24 @@
 
         <div id="task4Feedback" class="feedback"></div>
       </div>
+
+      <div class="card">
+        <div>
+          <div class="title">Development</div>
+          <div class="muted">SLAM-Map nur für Entwicklung und Tests zurücksetzen.</div>
+        </div>
+
+        <div class="task-status">
+          <div>Service: <strong>/slam_toolbox/reset</strong></div>
+          <div>Request: <strong>pause_new_measurements: false</strong></div>
+        </div>
+
+        <div class="task-grid">
+          <button id="resetSlamMapButton" class="task-button stop">SLAM-Map zurücksetzen</button>
+        </div>
+
+        <div id="developmentFeedback" class="feedback"></div>
+      </div>
     </section>
   </main>
 
@@ -777,6 +795,8 @@
   const task4StartText = document.getElementById("task4StartText");
   const task4HeadingText = document.getElementById("task4HeadingText");
   const task4PlanText = document.getElementById("task4PlanText");
+  const resetSlamMapButton = document.getElementById("resetSlamMapButton");
+  const developmentFeedback = document.getElementById("developmentFeedback");
   const missionState = document.getElementById("missionState");
   const activePattern = document.getElementById("activePattern");
   const activeStep = document.getElementById("activeStep");
@@ -899,7 +919,7 @@
 
     const toSvg = point => ({
       x: offsetX + (point.x - minX) * scale,
-      y: 180 - (offsetY + (point.y - minY) * scale),
+      y: offsetY + (maxY - point.y) * scale,
     });
 
     const svgPoints = points.map(toSvg);
@@ -1081,6 +1101,10 @@
         updateRuntimeState(message);
         showFeedback(task4Feedback, message.message, message.success);
         sendTaskMessage({ type: "request_selector_status" }, false);
+      }
+
+      if (message.type === "development_result") {
+        showFeedback(developmentFeedback, message.message, message.success);
       }
 
       if (message.type === "task4_plan") {
@@ -1411,6 +1435,22 @@
     }
 
     sendTaskMessage({ type: "task4_command", command: "stop" });
+  });
+
+  resetSlamMapButton.addEventListener("click", () => {
+    const firstConfirmed = window.confirm("Development: SLAM-Map wirklich zurücksetzen?");
+    if (!firstConfirmed) {
+      showFeedback(developmentFeedback, "SLAM-Map-Reset abgebrochen.", false);
+      return;
+    }
+
+    const secondConfirmed = window.confirm("Zweite Bestätigung: Die aktuelle SLAM-Map wird zurückgesetzt. Fortfahren?");
+    if (!secondConfirmed) {
+      showFeedback(developmentFeedback, "SLAM-Map-Reset abgebrochen.", false);
+      return;
+    }
+
+    sendTaskMessage({ type: "reset_slam_map" });
   });
 
   document.addEventListener("visibilitychange", () => {
