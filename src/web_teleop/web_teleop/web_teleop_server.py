@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import subprocess
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -26,7 +27,6 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
-from slam_toolbox.srv import Reset as SlamToolboxReset
 import uvicorn
 
 
@@ -158,10 +158,6 @@ class WebTeleopNode(Node):
         self._reset_navigation_client = self.create_client(
             Trigger,
             "/reset_navigation",
-        )
-        self._slam_reset_client = self.create_client(
-            SlamToolboxReset,
-            "/slam_toolbox/reset",
         )
         self._task2_start_client = self.create_client(
             Trigger,
@@ -620,42 +616,66 @@ class WebTeleopNode(Node):
         future.add_done_callback(finish)
 
     def reset_slam_map(self, websocket: WebSocket) -> None:
-        if not self._service_ready(self._slam_reset_client):
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "development_result",
-                    "command": "reset_slam_map",
-                    "success": False,
-                    "message": "SLAM-Reset-Service '/slam_toolbox/reset' ist nicht erreichbar.",
-                },
-            )
-            return
+        def call_reset_service() -> None:
+            command = [
+                "ros2",
+                "service",
+                "call",
+                "/slam_toolbox/reset",
+                "slam_toolbox/srv/Reset",
+                "{pause_new_measurements: false}",
+            ]
 
-        request = SlamToolboxReset.Request()
-        request.pause_new_measurements = False
-        future = self._slam_reset_client.call_async(request)
-
-        def finish(done_future: Any) -> None:
             try:
-                done_future.result()
-                payload = {
-                    "type": "development_result",
-                    "command": "reset_slam_map",
-                    "success": True,
-                    "message": "SLAM-Map wurde über '/slam_toolbox/reset' zurückgesetzt.",
-                }
-            except Exception as exc:
+                result = subprocess.run(
+                    command,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=10.0,
+                )
+            except FileNotFoundError:
                 payload = {
                     "type": "development_result",
                     "command": "reset_slam_map",
                     "success": False,
-                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
+                    "message": "ros2 CLI ist im Webteleop-Container nicht verfügbar.",
                 }
+            except subprocess.TimeoutExpired:
+                payload = {
+                    "type": "development_result",
+                    "command": "reset_slam_map",
+                    "success": False,
+                    "message": "Timeout beim Aufruf von '/slam_toolbox/reset'. Prüfe ROS_DOMAIN_ID, Docker-Netzwerk und ob slam_toolbox läuft.",
+                }
+            else:
+                stdout = result.stdout.strip()
+                stderr = result.stderr.strip()
+                detail = stderr or stdout
+
+                if result.returncode == 0:
+                    payload = {
+                        "type": "development_result",
+                        "command": "reset_slam_map",
+                        "success": True,
+                        "message": "SLAM-Map wurde über '/slam_toolbox/reset' zurückgesetzt.",
+                    }
+                else:
+                    payload = {
+                        "type": "development_result",
+                        "command": "reset_slam_map",
+                        "success": False,
+                        "message": (
+                            "Serviceaufruf fehlgeschlagen. "
+                            "Prüfe, ob der Webteleop-Container den Service sieht und "
+                            "ob der Typ 'slam_toolbox/srv/Reset' dort verfügbar ist. "
+                            f"Details: {detail}"
+                        ),
+                    }
 
             self._schedule_send(websocket, payload)
 
-        future.add_done_callback(finish)
+        threading.Thread(target=call_reset_service, daemon=True).start()
 
     def set_task4_polygon(self, polygon_coords: list[Any], websocket: WebSocket) -> None:
         try:
