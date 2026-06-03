@@ -1438,14 +1438,8 @@
   });
 
   resetSlamMapButton.addEventListener("click", () => {
-    const firstConfirmed = window.confirm("Development: SLAM-Map wirklich zurücksetzen?");
-    if (!firstConfirmed) {
-      showFeedback(developmentFeedback, "SLAM-Map-Reset abgebrochen.", false);
-      return;
-    }
-
-    const secondConfirmed = window.confirm("Zweite Bestätigung: Die aktuelle SLAM-Map wird zurückgesetzt. Fortfahren?");
-    if (!secondConfirmed) {
+    const confirmed = window.confirm("Development: SLAM-Map wirklich zurücksetzen?");
+    if (!confirmed) {
       showFeedback(developmentFeedback, "SLAM-Map-Reset abgebrochen.", false);
       return;
     }
