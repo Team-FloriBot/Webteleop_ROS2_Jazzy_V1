@@ -684,8 +684,6 @@
         <div class="task-grid">
           <button id="planTask4Button" class="task-button">Planen</button>
           <button id="startTask4Button" class="task-button primary">Start</button>
-          <button id="pauseTask4Button" class="task-button">Unterbrechen</button>
-          <button id="resumeTask4Button" class="task-button">Fortsetzen</button>
           <button id="stopTask4Button" class="task-button stop">Stop</button>
         </div>
 
@@ -770,8 +768,6 @@
   const setTask4CornersButton = document.getElementById("setTask4CornersButton");
   const planTask4Button = document.getElementById("planTask4Button");
   const startTask4Button = document.getElementById("startTask4Button");
-  const pauseTask4Button = document.getElementById("pauseTask4Button");
-  const resumeTask4Button = document.getElementById("resumeTask4Button");
   const stopTask4Button = document.getElementById("stopTask4Button");
   const task4Polygon = document.getElementById("task4Polygon");
   const task4PlanLine = document.getElementById("task4PlanLine");
@@ -983,8 +979,6 @@
     resumeTask3Button.disabled = runningTask !== "task3";
     stopTask3Button.disabled = runningTask !== "task3";
 
-    pauseTask4Button.disabled = runningTask !== "task4";
-    resumeTask4Button.disabled = runningTask !== "task4";
     stopTask4Button.disabled = runningTask !== "task4";
   }
 
@@ -1409,23 +1403,6 @@
     sendTaskMessage({ type: "task4_command", command: "start" });
   });
 
-  pauseTask4Button.addEventListener("click", () => {
-    if (!confirmTask4Action("Navigation unterbrechen")) {
-      showFeedback(task4Feedback, "Task-4-Pause abgebrochen.", false);
-      return;
-    }
-
-    sendTaskMessage({ type: "task4_command", command: "pause" });
-  });
-
-  resumeTask4Button.addEventListener("click", () => {
-    if (!confirmTask4Action("Navigation fortsetzen")) {
-      showFeedback(task4Feedback, "Task-4-Fortsetzen abgebrochen.", false);
-      return;
-    }
-
-    sendTaskMessage({ type: "task4_command", command: "resume" });
-  });
 
   stopTask4Button.addEventListener("click", () => {
     if (!confirmTask4Action("Navigation stoppen")) {
