@@ -696,13 +696,19 @@
             </defs>
             <polygon id="task4Polygon" class="field" points="70,130 250,130 250,50 70,50"></polygon>
             <polyline id="task4PlanLine" class="planned-path" points=""></polyline>
+            <g id="task4Axes">
+              <line id="task4AxisX" class="axis-arrow" x1="70" y1="130" x2="30" y2="130"></line>
+              <line id="task4AxisY" class="axis-arrow" x1="70" y1="130" x2="70" y2="90"></line>
+              <text id="task4AxisXLabel" class="axis-label" x="24" y="134">x</text>
+              <text id="task4AxisYLabel" class="axis-label" x="64" y="84">y</text>
+            </g>
             <line id="task4HeadingLine" class="edge-arrow" x1="70" y1="130" x2="125" y2="130"></line>
             <circle id="task4StartPoint" class="start-point" cx="70" cy="130" r="5"></circle>
             <polygon id="task4Robot" class="robot-heading" points="70,122 82,130 70,138"></polygon>
           </svg>
           <div class="task-status">
-            <div>Startpunkt: <strong id="task4StartText">0.00 / 0.00 m</strong></div>
-            <div>Ausrichtung: <strong id="task4HeadingText">0.0° entlang Punkt 1 → Punkt 2</strong></div>
+            <div>Roboterposition: <strong id="task4StartText">0.00 / 0.00 m</strong></div>
+            <div>Roboterausrichtung: <strong id="task4HeadingText">0.0°</strong></div>
             <div>Geplanter Pfad: <strong id="task4PlanText">noch nicht empfangen</strong></div>
           </div>
         </div>
@@ -792,6 +798,10 @@
   const task4HeadingLine = document.getElementById("task4HeadingLine");
   const task4StartPoint = document.getElementById("task4StartPoint");
   const task4Robot = document.getElementById("task4Robot");
+  const task4AxisX = document.getElementById("task4AxisX");
+  const task4AxisY = document.getElementById("task4AxisY");
+  const task4AxisXLabel = document.getElementById("task4AxisXLabel");
+  const task4AxisYLabel = document.getElementById("task4AxisYLabel");
   const task4StartText = document.getElementById("task4StartText");
   const task4HeadingText = document.getElementById("task4HeadingText");
   const task4PlanText = document.getElementById("task4PlanText");
@@ -805,8 +815,9 @@
   let task4PlanFrame = "";
   let task4PolygonPoints = [];
   let task4PolygonFrame = "";
+  let task4RobotPose = null;
 
-  const SEND_PERIOD_MS = 50;
+  const SEND_PERIOD_MS = 40;
 
   const LINEAR_ACCEL_LIMIT = 0.40;
   const LINEAR_DECEL_LIMIT = 0.70;
@@ -927,8 +938,25 @@
     const havePlan = task4PlanPoints.length > 0;
     const haveTargetPolygon = task4PolygonPoints.length >= 3
       && (!task4PlanFrame || !task4PolygonFrame || task4PolygonFrame === task4PlanFrame);
-    const polygonPoints = haveTargetPolygon ? task4PolygonPoints : (havePlan ? [] : inputPoints);
-    const displayedPoints = polygonPoints.concat(task4PlanPoints);
+
+    /*
+      Vor der Planung sind die Eingabepunkte lokale base_link-Koordinaten:
+      Roboterpose = lokaler Ursprung (0, 0), Blickrichtung = lokale +x-Richtung.
+      Der Coverage-Planner transformiert diese Punkte beim Planen selbst von base_link
+      nach odom. Deshalb werden die Eingabepunkte hier NICHT im Browser transformiert.
+    */
+    const localRobotPose = { x: 0.0, y: 0.0, theta: 0.0, frame_id: "base_link", child_frame_id: "base_link" };
+    const robotPoseInPlanFrame = task4RobotPose
+      && havePlan
+      && (!task4PlanFrame || task4RobotPose.frame_id === task4PlanFrame);
+
+    const polygonPoints = havePlan ? (haveTargetPolygon ? task4PolygonPoints : []) : inputPoints;
+    const robotPose = havePlan
+      ? (robotPoseInPlanFrame ? task4RobotPose : (validPoint(task4PlanPoints[0])
+        ? task4PlanPoints[0]
+        : localRobotPose))
+      : localRobotPose;
+    const displayedPoints = polygonPoints.concat(task4PlanPoints, [robotPose]);
 
     if (displayedPoints.length === 0) {
       task4Polygon.setAttribute("points", "");
@@ -954,8 +982,9 @@
     const offsetX = (320 - spanX * scale) / 2;
     const offsetY = (180 - spanY * scale) / 2;
 
+    // Darstellung gemäß gewünschter Orientierung: +x nach links, +y nach oben.
     const toSvg = point => ({
-      x: offsetX + (point.x - minX) * scale,
+      x: offsetX + (maxX - point.x) * scale,
       y: offsetY + (maxY - point.y) * scale,
     });
 
@@ -970,67 +999,64 @@
       const polygonText = haveTargetPolygon ? "Polygon im selben Frame" : "Polygon noch nicht im Plan-Frame";
       task4PlanText.textContent = `${task4PlanPoints.length} Punkte in ${frameText}; ${polygonText}`;
     } else {
-      task4PlanText.textContent = "noch nicht empfangen";
+      task4PlanText.textContent = "noch nicht empfangen; Eingabe ist lokal relativ zu base_link";
     }
 
-    const start = havePlan && validPoint(task4PlanPoints[0]) ? task4PlanPoints[0] : inputPoints[0];
-    const second = havePlan && validPoint(task4PlanPoints[1]) ? task4PlanPoints[1] : inputPoints[1];
-    const startSvg = toSvg(start);
-    const secondSvg = validPoint(second) ? toSvg(second) : null;
+    const robotSvg = toSvg(robotPose);
+    const heading = Number.isFinite(robotPose.theta) ? robotPose.theta : 0.0;
 
-    let heading = null;
-    let headingSource = "Orientierung aus Pose";
+    const axisLength = 34;
+    task4AxisX.setAttribute("x1", robotSvg.x.toFixed(1));
+    task4AxisX.setAttribute("y1", robotSvg.y.toFixed(1));
+    task4AxisX.setAttribute("x2", (robotSvg.x - axisLength).toFixed(1));
+    task4AxisX.setAttribute("y2", robotSvg.y.toFixed(1));
+    task4AxisY.setAttribute("x1", robotSvg.x.toFixed(1));
+    task4AxisY.setAttribute("y1", robotSvg.y.toFixed(1));
+    task4AxisY.setAttribute("x2", robotSvg.x.toFixed(1));
+    task4AxisY.setAttribute("y2", (robotSvg.y - axisLength).toFixed(1));
+    task4AxisXLabel.setAttribute("x", (robotSvg.x - axisLength - 11).toFixed(1));
+    task4AxisXLabel.setAttribute("y", (robotSvg.y + 4).toFixed(1));
+    task4AxisYLabel.setAttribute("x", (robotSvg.x - 4).toFixed(1));
+    task4AxisYLabel.setAttribute("y", (robotSvg.y - axisLength - 7).toFixed(1));
 
-    if (havePlan && validPoint(second)) {
-      heading = Math.atan2(second.y - start.y, second.x - start.x);
-      headingSource = "Fahrtrichtung aus Plan-Tangente";
-    } else if (!havePlan && validPoint(second)) {
-      heading = Math.atan2(second.y - start.y, second.x - start.x);
-      headingSource = "Punkt 1 → Punkt 2";
-    } else if (Number.isFinite(start.theta)) {
-      heading = start.theta;
-      headingSource = havePlan ? "Orientierung aus Plan-Pose" : "Orientierung aus Pose";
-    }
-
-    if (heading === null) {
-      heading = 0.0;
-      headingSource = "Fallback";
-    }
-
-    const svgHeading = -heading;
-
+    // Bei +x links und +y oben gilt für den SVG-Richtungsvektor: [-cos(theta), -sin(theta)].
     const arrowLength = 46;
     const arrowEnd = {
-      x: startSvg.x + arrowLength * Math.cos(svgHeading),
-      y: startSvg.y + arrowLength * Math.sin(svgHeading),
+      x: robotSvg.x - arrowLength * Math.cos(heading),
+      y: robotSvg.y - arrowLength * Math.sin(heading),
     };
 
-    task4StartPoint.setAttribute("cx", startSvg.x.toFixed(1));
-    task4StartPoint.setAttribute("cy", startSvg.y.toFixed(1));
-    task4HeadingLine.setAttribute("x1", startSvg.x.toFixed(1));
-    task4HeadingLine.setAttribute("y1", startSvg.y.toFixed(1));
+    task4StartPoint.setAttribute("cx", robotSvg.x.toFixed(1));
+    task4StartPoint.setAttribute("cy", robotSvg.y.toFixed(1));
+    task4HeadingLine.setAttribute("x1", robotSvg.x.toFixed(1));
+    task4HeadingLine.setAttribute("y1", robotSvg.y.toFixed(1));
     task4HeadingLine.setAttribute("x2", arrowEnd.x.toFixed(1));
     task4HeadingLine.setAttribute("y2", arrowEnd.y.toFixed(1));
 
     const robotLength = 20;
     const robotWidth = 14;
+    const direction = Math.atan2(-Math.sin(heading), -Math.cos(heading));
     const tip = {
-      x: startSvg.x + robotLength * Math.cos(svgHeading),
-      y: startSvg.y + robotLength * Math.sin(svgHeading),
+      x: robotSvg.x + robotLength * Math.cos(direction),
+      y: robotSvg.y + robotLength * Math.sin(direction),
     };
     const left = {
-      x: startSvg.x + robotWidth * Math.cos(svgHeading + 2.35),
-      y: startSvg.y + robotWidth * Math.sin(svgHeading + 2.35),
+      x: robotSvg.x + robotWidth * Math.cos(direction + 2.35),
+      y: robotSvg.y + robotWidth * Math.sin(direction + 2.35),
     };
     const right = {
-      x: startSvg.x + robotWidth * Math.cos(svgHeading - 2.35),
-      y: startSvg.y + robotWidth * Math.sin(svgHeading - 2.35),
+      x: robotSvg.x + robotWidth * Math.cos(direction - 2.35),
+      y: robotSvg.y + robotWidth * Math.sin(direction - 2.35),
     };
     task4Robot.setAttribute("points", `${tip.x.toFixed(1)},${tip.y.toFixed(1)} ${left.x.toFixed(1)},${left.y.toFixed(1)} ${right.x.toFixed(1)},${right.y.toFixed(1)}`);
 
-    const startFrame = havePlan ? (task4PlanFrame || "Plan-Frame") : "Eingabe/base_link";
-    task4StartText.textContent = `${start.x.toFixed(2)} / ${start.y.toFixed(2)} m (${startFrame})`;
-    task4HeadingText.textContent = `${normalizeAngleDegrees(heading * 180 / Math.PI).toFixed(1)}° ${headingSource}`;
+    const poseFrame = robotPose.frame_id || (havePlan ? (task4PlanFrame || "Plan-Frame") : "base_link");
+    const childFrame = robotPose.child_frame_id ? ` → ${robotPose.child_frame_id}` : "";
+    const poseSource = havePlan
+      ? (robotPoseInPlanFrame ? "aktuelle Odometrie" : "Fallback: erster Planpunkt")
+      : "lokaler Ursprung der Eingabe";
+    task4StartText.textContent = `${robotPose.x.toFixed(2)} / ${robotPose.y.toFixed(2)} m (${poseFrame}${childFrame}, ${poseSource})`;
+    task4HeadingText.textContent = `${normalizeAngleDegrees(heading * 180 / Math.PI).toFixed(1)}°; Eingabe relativ zum Roboter, Anzeige: +x links, +y oben`;
   }
 
   function taskIsBlocked(taskId) {
@@ -1118,7 +1144,6 @@
       wsStatus.textContent = "Verbunden";
       wsStatus.className = "status ok";
       websocket.send(JSON.stringify({ type: "request_selector_status" }));
-      websocket.send(JSON.stringify({ type: "request_navigation_status" }));
     };
 
     websocket.onmessage = event => {
@@ -1133,7 +1158,6 @@
         updateRuntimeState(message);
         updateActiveSource(message.active_source);
         showFeedback(selectionFeedback, message.message, message.success);
-        sendTaskMessage({ type: "request_navigation_status" }, false);
       }
 
       if (message.type === "navigation_status") {
@@ -1178,6 +1202,18 @@
           : [];
         task4PolygonFrame = message.frame_id || "";
         updateTask4Preview();
+      }
+
+      if (message.type === "task4_robot_pose") {
+        task4RobotPose = {
+          x: Number(message.x),
+          y: Number(message.y),
+          theta: Number(message.theta),
+          frame_id: message.frame_id || "",
+          child_frame_id: message.child_frame_id || "",
+        };
+        updateTask4Preview();
+        return;
       }
 
       if (message.type === "task4_plan") {
@@ -1540,11 +1576,7 @@
     }
   });
 
-  setInterval(() => {
-    if (connected && !active && menuView.classList.contains("active")) {
-      sendTaskMessage({ type: "request_navigation_status" }, false);
-    }
-  }, 750);
+  // Keine zyklische Service-Abfrage: Teleop-cmd_vel bleibt vollständig von Task-Services entkoppelt.
 
   setInterval(() => {
     if (!active || activeSource !== "webteleop") {
