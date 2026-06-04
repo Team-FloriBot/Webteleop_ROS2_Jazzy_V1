@@ -15,11 +15,11 @@ from typing import Any
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from cmd_vel_selector.srv import SelectSource
-from fre2026_task_interfaces.srv import GetNavigationStatus, SetNavigationPattern
+from fre2026_tasks_interfaces.srv import GetNavigationStatus, SetNavigationPattern
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from geometry_msgs.msg import Twist
-from nav_msgs.msg import Path as RosPath
+from nav_msgs.msg import Odometry, Path as RosPath
 from visualization_msgs.msg import Marker
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
@@ -97,6 +97,7 @@ class WebTeleopNode(Node):
         self._running_task: str | None = None
         self._latest_task4_plan: dict[str, Any] | None = None
         self._latest_task4_polygon: dict[str, Any] | None = None
+        self._latest_task4_robot_pose: dict[str, Any] | None = None
 
         self._cmd_vel_topic = self.declare_parameter(
             "cmd_vel_topic",
@@ -109,8 +110,12 @@ class WebTeleopNode(Node):
             self.declare_parameter("max_angular", 0.9).value
         )
         self._timeout_s = float(
-            self.declare_parameter("timeout_s", 0.3).value
+            self.declare_parameter("timeout_s", 0.75).value
         )
+        self._odom_topic = self.declare_parameter(
+            "odom_topic",
+            "/odom",
+        ).value
 
         self._publisher = self.create_publisher(
             Twist,
@@ -220,6 +225,12 @@ class WebTeleopNode(Node):
             Marker,
             "/coverage_polygon_marker",
             self._task4_polygon_callback,
+            10,
+        )
+        self._odom_subscription = self.create_subscription(
+            Odometry,
+            self._odom_topic,
+            self._odom_callback,
             10,
         )
 
@@ -343,7 +354,7 @@ class WebTeleopNode(Node):
             return
 
         if not self._select_client.service_is_ready():
-            self._select_client.wait_for_service(timeout_sec=0.2)
+            self._select_client.wait_for_service(timeout_sec=0.02)
 
         if not self._select_client.service_is_ready():
             self._schedule_send(
@@ -391,7 +402,7 @@ class WebTeleopNode(Node):
     @staticmethod
     def _service_ready(client: Any) -> bool:
         if not client.service_is_ready():
-            client.wait_for_service(timeout_sec=0.2)
+            client.wait_for_service(timeout_sec=0.02)
         return bool(client.service_is_ready())
 
     def set_navigation_pattern(self, pattern: str, websocket: WebSocket) -> None:
@@ -851,6 +862,25 @@ class WebTeleopNode(Node):
             "task4_result",
             websocket,
         )
+    def _odom_callback(self, message: Odometry) -> None:
+        pose = message.pose.pose
+        q = pose.orientation
+        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        theta = math.atan2(siny_cosp, cosy_cosp)
+
+        frame_id = message.header.frame_id or "odom"
+        child_frame_id = message.child_frame_id or "base_link"
+        payload = {
+            "type": "task4_robot_pose",
+            "frame_id": frame_id,
+            "child_frame_id": child_frame_id,
+            "x": float(pose.position.x),
+            "y": float(pose.position.y),
+            "theta": float(theta),
+        }
+        self._latest_task4_robot_pose = payload
+        self._schedule_broadcast(payload)
 
     def _task4_plan_callback(self, message: RosPath) -> None:
         poses = []
@@ -1135,6 +1165,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await websocket.send_text(json.dumps(node.status_payload()))
         if node._latest_task4_polygon is not None:
             await websocket.send_text(json.dumps(node._latest_task4_polygon))
+        if node._latest_task4_robot_pose is not None:
+            await websocket.send_text(json.dumps(node._latest_task4_robot_pose))
         if node._latest_task4_plan is not None:
             await websocket.send_text(json.dumps(node._latest_task4_plan))
 
