@@ -461,6 +461,18 @@
       fill: #17212b;
     }
 
+    .task4-svg .axis-arrow {
+      stroke: #17212b;
+      stroke-width: 1.6;
+      marker-end: url(#arrowHead);
+    }
+
+    .task4-svg .axis-label {
+      fill: #17212b;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
     .task4-svg .edge-arrow {
       stroke: #17212b;
       stroke-width: 2;
@@ -725,7 +737,7 @@
       <div class="card">
         <div>
           <div class="title">Task 4 Coverage</div>
-          <div class="muted">Eckpunkte setzen, Planung auslösen und Task-4-Steuerung bedienen.</div>
+          <div class="muted">Vorgehen: Eckpunkte als [x,y]-Koordinaten relativ zum Roboterursprung eingeben, anschließend „Eckpunkte setzen“, „Planen“ und „Start“ ausführen. Der Roboter bleibt bei [0,0]; +x zeigt nach vorne, +y nach links.</div>
         </div>
 
         <div class="task4-input-row">
@@ -754,18 +766,18 @@
             <polygon id="task4Polygon" class="field" points="70,130 250,130 250,50 70,50"></polygon>
             <polyline id="task4PlanLine" class="planned-path" points=""></polyline>
             <g id="task4Axes">
-              <line id="task4AxisX" class="axis-arrow" x1="70" y1="130" x2="30" y2="130"></line>
-              <line id="task4AxisY" class="axis-arrow" x1="70" y1="130" x2="70" y2="90"></line>
-              <text id="task4AxisXLabel" class="axis-label" x="24" y="134">x</text>
-              <text id="task4AxisYLabel" class="axis-label" x="64" y="84">y</text>
+              <line id="task4AxisX" class="axis-arrow" x1="302" y1="162" x2="302" y2="140"></line>
+              <line id="task4AxisY" class="axis-arrow" x1="302" y1="162" x2="280" y2="162"></line>
+              <text id="task4AxisXLabel" class="axis-label" x="306" y="142">x</text>
+              <text id="task4AxisYLabel" class="axis-label" x="270" y="166">y</text>
             </g>
-            <line id="task4HeadingLine" class="edge-arrow" x1="70" y1="130" x2="125" y2="130"></line>
-            <circle id="task4StartPoint" class="start-point" cx="70" cy="130" r="5"></circle>
-            <polygon id="task4Robot" class="robot-heading" points="70,122 82,130 70,138"></polygon>
+            <line id="task4HeadingLine" class="edge-arrow" x1="160" y1="90" x2="160" y2="44"></line>
+            <circle id="task4StartPoint" class="start-point" cx="160" cy="90" r="5"></circle>
+            <polygon id="task4Robot" class="robot-heading" points="160,70 150,104 170,104"></polygon>
           </svg>
           <div class="task-status">
-            <div>Roboterposition: <strong id="task4StartText">0.00 / 0.00 m</strong></div>
-            <div>Roboterausrichtung: <strong id="task4HeadingText">0.0°</strong></div>
+            <div>Roboterursprung: <strong id="task4StartText">[x, y] = [0, 0]</strong></div>
+            <div class="muted">Bezugspunkt ist <code>base_link</code> des Roboters; im aktuellen Modell liegt dieser Referenzpunkt am vorderen Achsgelenk. Von dort aus wird das Feld relativ eingegeben.</div>
             <div>Geplanter Pfad: <strong id="task4PlanText">noch nicht empfangen</strong></div>
           </div>
         </div>
@@ -876,7 +888,6 @@
   const task4AxisXLabel = document.getElementById("task4AxisXLabel");
   const task4AxisYLabel = document.getElementById("task4AxisYLabel");
   const task4StartText = document.getElementById("task4StartText");
-  const task4HeadingText = document.getElementById("task4HeadingText");
   const task4PlanText = document.getElementById("task4PlanText");
   const resetSlamMapButton = document.getElementById("resetSlamMapButton");
   const developmentFeedback = document.getElementById("developmentFeedback");
@@ -1014,52 +1025,49 @@
       && (!task4PlanFrame || !task4PolygonFrame || task4PolygonFrame === task4PlanFrame);
 
     /*
-      Vor der Planung sind die Eingabepunkte lokale base_link-Koordinaten:
-      Roboterpose = lokaler Ursprung (0, 0), Blickrichtung = lokale +x-Richtung.
-      Der Coverage-Planner transformiert diese Punkte beim Planen selbst von base_link
-      nach odom. Deshalb werden die Eingabepunkte hier NICHT im Browser transformiert.
+      Robotzentrierte Darstellung für Task 4:
+      - Der Roboter ist im Plot immer fest bei lokal (0, 0).
+      - Die Fahrtrichtung des Roboters zeigt immer nach oben.
+      - ROS/base_link: +x = vorwärts, +y = links.
+      - SVG: +x nach rechts, +y nach unten.
+      Daraus folgt für die Anzeige: svg_x = center_x - y, svg_y = center_y - x.
     */
     const localRobotPose = { x: 0.0, y: 0.0, theta: 0.0, frame_id: "base_link", child_frame_id: "base_link" };
-    const robotPoseInPlanFrame = task4RobotPose
-      && havePlan
-      && (!task4PlanFrame || task4RobotPose.frame_id === task4PlanFrame);
-
-    const polygonPoints = havePlan ? (haveTargetPolygon ? task4PolygonPoints : []) : inputPoints;
-    const robotPose = havePlan
-      ? (robotPoseInPlanFrame ? task4RobotPose : (validPoint(task4PlanPoints[0])
-        ? task4PlanPoints[0]
-        : localRobotPose))
-      : localRobotPose;
+    const polygonPoints = havePlan ? (haveTargetPolygon ? task4PolygonPoints : inputPoints) : inputPoints;
+    const robotPose = localRobotPose;
     const displayedPoints = polygonPoints.concat(task4PlanPoints, [robotPose]);
 
     if (displayedPoints.length === 0) {
       task4Polygon.setAttribute("points", "");
       task4PlanLine.setAttribute("points", "");
-      task4StartText.textContent = "nicht verfügbar";
-      task4HeadingText.textContent = "nicht verfügbar";
+      task4StartText.textContent = "[x, y] = [0, 0]";
       task4PlanText.textContent = havePlan
         ? `${task4PlanPoints.length} Punkte in ${task4PlanFrame || "unbekanntem Frame"}; Polygon noch nicht empfangen`
         : "noch nicht empfangen";
       return;
     }
 
-    const minX = Math.min(...displayedPoints.map(point => point.x));
-    const maxX = Math.max(...displayedPoints.map(point => point.x));
-    const minY = Math.min(...displayedPoints.map(point => point.y));
-    const maxY = Math.max(...displayedPoints.map(point => point.y));
-    const spanX = Math.max(0.001, maxX - minX);
-    const spanY = Math.max(0.001, maxY - minY);
-    const padding = 24;
-    const width = 320 - 2 * padding;
-    const height = 180 - 2 * padding;
-    const scale = Math.min(width / spanX, height / spanY);
-    const offsetX = (320 - spanX * scale) / 2;
-    const offsetY = (180 - spanY * scale) / 2;
+    const robotSvg = { x: 160.0, y: 90.0 };
+    const padding = 20.0;
+    const availableLeft = robotSvg.x - padding;
+    const availableRight = 320.0 - padding - robotSvg.x;
+    const availableUp = robotSvg.y - padding;
+    const availableDown = 180.0 - padding - robotSvg.y;
 
-    // Darstellung gemäß gewünschter Orientierung: +x nach links, +y nach oben.
+    const maxLeft = Math.max(0.001, ...displayedPoints.map(point => Math.max(0, point.y)));
+    const maxRight = Math.max(0.001, ...displayedPoints.map(point => Math.max(0, -point.y)));
+    const maxUp = Math.max(0.001, ...displayedPoints.map(point => Math.max(0, point.x)));
+    const maxDown = Math.max(0.001, ...displayedPoints.map(point => Math.max(0, -point.x)));
+    const scale = Math.min(
+      availableLeft / maxLeft,
+      availableRight / maxRight,
+      availableUp / maxUp,
+      availableDown / maxDown
+    );
+
     const toSvg = point => ({
-      x: offsetX + (maxX - point.x) * scale,
-      y: offsetY + (maxY - point.y) * scale,
+      x: robotSvg.x - point.y * scale,
+      y: robotSvg.y - point.x * scale,
     });
 
     const svgPolygonPoints = polygonPoints.map(toSvg);
@@ -1070,34 +1078,37 @@
 
     if (havePlan) {
       const frameText = task4PlanFrame || "unbekanntem Frame";
-      const polygonText = haveTargetPolygon ? "Polygon im selben Frame" : "Polygon noch nicht im Plan-Frame";
-      task4PlanText.textContent = `${task4PlanPoints.length} Punkte in ${frameText}; ${polygonText}`;
+      const polygonText = haveTargetPolygon ? "Polygon empfangen" : "Polygon noch nicht empfangen";
+      task4PlanText.textContent = `${task4PlanPoints.length} Punkte in ${frameText}; ${polygonText}; Anzeige robotzentriert`;
     } else {
-      task4PlanText.textContent = "noch nicht empfangen; Eingabe ist lokal relativ zu base_link";
+      task4PlanText.textContent = "noch nicht empfangen; Eingabe relativ zu [0,0]";
     }
 
-    const robotSvg = toSvg(robotPose);
-    const heading = Number.isFinite(robotPose.theta) ? robotPose.theta : 0.0;
+    // Kleines Koordinatensystem: fest unten rechts im karierten Plot-Hintergrund.
+    // Die Position liegt in ViewBox-/Pixelkoordinaten des Gitters und ist
+    // unabhängig von Polygon, Pfad, Roboterposition und Skalierung.
+    const previewWidth = 320.0;
+    const previewHeight = 180.0;
+    const axisMargin = 18.0;
+    const axisOrigin = { x: previewWidth - axisMargin, y: previewHeight - axisMargin };
+    const axisLength = 22.0;
+    task4AxisX.setAttribute("x1", axisOrigin.x.toFixed(1));
+    task4AxisX.setAttribute("y1", axisOrigin.y.toFixed(1));
+    task4AxisX.setAttribute("x2", axisOrigin.x.toFixed(1));
+    task4AxisX.setAttribute("y2", (axisOrigin.y - axisLength).toFixed(1));
+    task4AxisY.setAttribute("x1", axisOrigin.x.toFixed(1));
+    task4AxisY.setAttribute("y1", axisOrigin.y.toFixed(1));
+    task4AxisY.setAttribute("x2", (axisOrigin.x - axisLength).toFixed(1));
+    task4AxisY.setAttribute("y2", axisOrigin.y.toFixed(1));
+    task4AxisXLabel.setAttribute("x", (axisOrigin.x + 4.0).toFixed(1));
+    task4AxisXLabel.setAttribute("y", (axisOrigin.y - axisLength + 2.0).toFixed(1));
+    task4AxisYLabel.setAttribute("x", (axisOrigin.x - axisLength - 10.0).toFixed(1));
+    task4AxisYLabel.setAttribute("y", (axisOrigin.y + 4.0).toFixed(1));
 
-    const axisLength = 34;
-    task4AxisX.setAttribute("x1", robotSvg.x.toFixed(1));
-    task4AxisX.setAttribute("y1", robotSvg.y.toFixed(1));
-    task4AxisX.setAttribute("x2", (robotSvg.x - axisLength).toFixed(1));
-    task4AxisX.setAttribute("y2", robotSvg.y.toFixed(1));
-    task4AxisY.setAttribute("x1", robotSvg.x.toFixed(1));
-    task4AxisY.setAttribute("y1", robotSvg.y.toFixed(1));
-    task4AxisY.setAttribute("x2", robotSvg.x.toFixed(1));
-    task4AxisY.setAttribute("y2", (robotSvg.y - axisLength).toFixed(1));
-    task4AxisXLabel.setAttribute("x", (robotSvg.x - axisLength - 11).toFixed(1));
-    task4AxisXLabel.setAttribute("y", (robotSvg.y + 4).toFixed(1));
-    task4AxisYLabel.setAttribute("x", (robotSvg.x - 4).toFixed(1));
-    task4AxisYLabel.setAttribute("y", (robotSvg.y - axisLength - 7).toFixed(1));
-
-    // Bei +x links und +y oben gilt für den SVG-Richtungsvektor: [-cos(theta), -sin(theta)].
     const arrowLength = 46;
     const arrowEnd = {
-      x: robotSvg.x - arrowLength * Math.cos(heading),
-      y: robotSvg.y - arrowLength * Math.sin(heading),
+      x: robotSvg.x,
+      y: robotSvg.y - arrowLength,
     };
 
     task4StartPoint.setAttribute("cx", robotSvg.x.toFixed(1));
@@ -1107,30 +1118,12 @@
     task4HeadingLine.setAttribute("x2", arrowEnd.x.toFixed(1));
     task4HeadingLine.setAttribute("y2", arrowEnd.y.toFixed(1));
 
-    const robotLength = 20;
-    const robotWidth = 14;
-    const direction = Math.atan2(-Math.sin(heading), -Math.cos(heading));
-    const tip = {
-      x: robotSvg.x + robotLength * Math.cos(direction),
-      y: robotSvg.y + robotLength * Math.sin(direction),
-    };
-    const left = {
-      x: robotSvg.x + robotWidth * Math.cos(direction + 2.35),
-      y: robotSvg.y + robotWidth * Math.sin(direction + 2.35),
-    };
-    const right = {
-      x: robotSvg.x + robotWidth * Math.cos(direction - 2.35),
-      y: robotSvg.y + robotWidth * Math.sin(direction - 2.35),
-    };
+    const tip = { x: robotSvg.x, y: robotSvg.y - 20.0 };
+    const left = { x: robotSvg.x - 10.0, y: robotSvg.y + 14.0 };
+    const right = { x: robotSvg.x + 10.0, y: robotSvg.y + 14.0 };
     task4Robot.setAttribute("points", `${tip.x.toFixed(1)},${tip.y.toFixed(1)} ${left.x.toFixed(1)},${left.y.toFixed(1)} ${right.x.toFixed(1)},${right.y.toFixed(1)}`);
 
-    const poseFrame = robotPose.frame_id || (havePlan ? (task4PlanFrame || "Plan-Frame") : "base_link");
-    const childFrame = robotPose.child_frame_id ? ` → ${robotPose.child_frame_id}` : "";
-    const poseSource = havePlan
-      ? (robotPoseInPlanFrame ? "aktuelle Odometrie" : "Fallback: erster Planpunkt")
-      : "lokaler Ursprung der Eingabe";
-    task4StartText.textContent = `${robotPose.x.toFixed(2)} / ${robotPose.y.toFixed(2)} m (${poseFrame}${childFrame}, ${poseSource})`;
-    task4HeadingText.textContent = `${normalizeAngleDegrees(heading * 180 / Math.PI).toFixed(1)}°; Eingabe relativ zum Roboter, Anzeige: +x links, +y oben`;
+    task4StartText.textContent = "[x, y] = [0, 0]";
   }
 
   function taskIsBlocked(taskId) {
