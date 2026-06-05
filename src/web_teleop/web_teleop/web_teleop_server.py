@@ -16,6 +16,7 @@ import rclpy
 from ament_index_python.packages import get_package_share_directory
 from cmd_vel_selector.srv import SelectSource
 from fre2026_tasks_interfaces.srv import GetNavigationStatus, SetNavigationPattern
+from maize_navigation_interfaces.srv import StartNavigation
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from geometry_msgs.msg import Twist
@@ -98,6 +99,11 @@ class WebTeleopNode(Node):
         self._latest_task4_plan: dict[str, Any] | None = None
         self._latest_task4_polygon: dict[str, Any] | None = None
         self._latest_task4_robot_pose: dict[str, Any] | None = None
+        self._task_navigation_config: dict[str, dict[str, str]] = {
+            "task1": {"pattern": "", "carefulness": "high", "model_path": ""},
+            "task2": {"pattern": "", "carefulness": "high", "model_path": ""},
+            "task3": {"pattern": "", "carefulness": "high", "model_path": ""},
+        }
 
         self._cmd_vel_topic = self.declare_parameter(
             "cmd_vel_topic",
@@ -147,7 +153,7 @@ class WebTeleopNode(Node):
             "/get_navigation_status",
         )
         self._start_navigation_client = self.create_client(
-            Trigger,
+            StartNavigation,
             "/start_navigation",
         )
         self._stop_navigation_client = self.create_client(
@@ -167,7 +173,7 @@ class WebTeleopNode(Node):
             "/reset_navigation",
         )
         self._task2_start_client = self.create_client(
-            Trigger,
+            StartNavigation,
             "/task2/start_navigation",
         )
         self._task2_stop_client = self.create_client(
@@ -183,7 +189,7 @@ class WebTeleopNode(Node):
             "/task2/resume_navigation",
         )
         self._task3_start_client = self.create_client(
-            Trigger,
+            StartNavigation,
             "/task3/start_navigation",
         )
         self._task3_stop_client = self.create_client(
@@ -405,47 +411,76 @@ class WebTeleopNode(Node):
             client.wait_for_service(timeout_sec=0.02)
         return bool(client.service_is_ready())
 
-    def set_navigation_pattern(self, pattern: str, websocket: WebSocket) -> None:
-        if not self._service_ready(self._set_pattern_client):
+    @staticmethod
+    def _normalize_carefulness(value: Any) -> str:
+        carefulness = str(value or "high").strip().lower()
+        if carefulness not in {"high", "medium", "low"}:
+            return "high"
+        return carefulness
+
+    def configure_task_navigation(
+        self,
+        task: str,
+        pattern: str,
+        carefulness: str,
+        model_path: str,
+        websocket: WebSocket,
+    ) -> None:
+        if task not in self._task_navigation_config:
             self._schedule_send(
                 websocket,
                 {
-                    "type": "task_result",
-                    "command": "set_pattern",
+                    "type": "task_config_result",
+                    "task": task,
                     "success": False,
-                    "message": "SetNavigationPattern-Service ist nicht erreichbar.",
+                    "message": "Unbekannte Task-Konfiguration.",
                 },
             )
             return
 
-        request = SetNavigationPattern.Request()
-        request.pattern = pattern
-        future = self._set_pattern_client.call_async(request)
-
-        def finish(done_future: Any) -> None:
-            try:
-                response = done_future.result()
-                payload = {
-                    "type": "task_result",
-                    "command": "set_pattern",
-                    "success": bool(response.success),
-                    "message": response.message,
-                    "accepted_pattern": response.accepted_pattern,
-                    "mission_state": response.mission_state,
-                    "can_start": bool(response.can_start),
-                    "can_resume": bool(response.can_resume),
-                }
-            except Exception as exc:
-                payload = {
-                    "type": "task_result",
-                    "command": "set_pattern",
+        pattern = str(pattern or "").strip()
+        if not pattern:
+            self._schedule_send(
+                websocket,
+                {
+                    "type": "task_config_result",
+                    "task": task,
                     "success": False,
-                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
-                }
+                    "message": "Pattern darf nicht leer sein.",
+                },
+            )
+            return
 
-            self._schedule_send(websocket, payload)
+        config = {
+            "pattern": pattern,
+            "carefulness": self._normalize_carefulness(carefulness),
+            "model_path": str(model_path or "").strip(),
+        }
+        self._task_navigation_config[task] = config
+        self._schedule_send(
+            websocket,
+            {
+                "type": "task_config_result",
+                "task": task,
+                "success": True,
+                "message": (
+                    f"{SOURCE_LABELS.get(task, task)} konfiguriert: "
+                    f"Pattern {config['pattern']}, Carefulness {config['carefulness']}."
+                ),
+                **config,
+            },
+        )
 
-        future.add_done_callback(finish)
+    def set_navigation_pattern(self, pattern: str, websocket: WebSocket) -> None:
+        # maize_navigation startet seit StartNavigation.srv direkt mit pattern/carefulness/model_path.
+        # Der alte Button bleibt erhalten und schreibt daher die lokale Task-1-Konfiguration.
+        self.configure_task_navigation(
+            "task1",
+            pattern,
+            self._task_navigation_config["task1"]["carefulness"],
+            self._task_navigation_config["task1"]["model_path"],
+            websocket,
+        )
 
     def request_navigation_status(self, websocket: WebSocket) -> None:
         if not self._service_ready(self._get_navigation_status_client):
@@ -499,6 +534,9 @@ class WebTeleopNode(Node):
         command: str,
         confirmed: bool,
         websocket: WebSocket,
+        pattern: str = "",
+        carefulness: str = "high",
+        model_path: str = "",
     ) -> None:
         confirmation_required = command in {"start", "pause"}
         if confirmation_required and not confirmed:
@@ -513,8 +551,25 @@ class WebTeleopNode(Node):
             )
             return
 
+        if command == "start":
+            config = dict(self._task_navigation_config["task1"])
+            if pattern:
+                config["pattern"] = str(pattern).strip()
+            if carefulness:
+                config["carefulness"] = self._normalize_carefulness(carefulness)
+            if model_path is not None:
+                config["model_path"] = str(model_path or "").strip()
+            self._task_navigation_config["task1"] = config
+            self._start_navigation_task(
+                "task1",
+                self._start_navigation_client,
+                "task_result",
+                websocket,
+                config,
+            )
+            return
+
         clients = {
-            "start": self._start_navigation_client,
             "stop": self._stop_navigation_client,
             "pause": self._pause_navigation_client,
             "resume": self._resume_navigation_client,
@@ -532,67 +587,14 @@ class WebTeleopNode(Node):
             )
             return
 
-        if command == "start":
-            ok, message = self._begin_task_start("task1")
-            if not ok:
-                self._schedule_send(
-                    websocket,
-                    {
-                        "type": "task_result",
-                        "command": command,
-                        "success": False,
-                        "message": message,
-                        **self._runtime_fields(),
-                    },
-                )
-                return
-
-        if not self._service_ready(client):
-            if command == "start":
-                self._finish_task_start("task1", False)
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "task_result",
-                    "command": command,
-                    "success": False,
-                    "message": f"Navigation-Service '{command}' ist nicht erreichbar.",
-                    **self._runtime_fields(),
-                },
-            )
-            return
-
-        future = client.call_async(Trigger.Request())
-
-        def finish(done_future: Any) -> None:
-            try:
-                response = done_future.result()
-                success = bool(response.success)
-                if command == "start":
-                    self._finish_task_start("task1", success)
-                elif command == "stop":
-                    self._finish_task_stop("task1", success)
-                payload = {
-                    "type": "task_result",
-                    "command": command,
-                    "success": success,
-                    "message": response.message,
-                    **self._runtime_fields(),
-                }
-            except Exception as exc:
-                payload = {
-                    "type": "task_result",
-                    "command": command,
-                    "success": False,
-                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
-                    **self._runtime_fields(),
-                }
-                if command == "start":
-                    self._finish_task_start("task1", False)
-
-            self._schedule_send(websocket, payload)
-
-        future.add_done_callback(finish)
+        self._trigger_task_client(
+            "task1",
+            client,
+            command,
+            f"Navigation-Service '{command}' ist nicht erreichbar.",
+            "task_result",
+            websocket,
+        )
 
     def reset_navigation(self, websocket: WebSocket) -> None:
         if not self._service_ready(self._reset_navigation_client):
@@ -780,6 +782,9 @@ class WebTeleopNode(Node):
         task: str,
         command: str,
         websocket: WebSocket,
+        pattern: str = "",
+        carefulness: str = "high",
+        model_path: str = "",
     ) -> None:
         clients_by_task = {
             "task2": {
@@ -808,6 +813,24 @@ class WebTeleopNode(Node):
                     "message": "Unbekannter Task-Befehl.",
                     **self._runtime_fields(),
                 },
+            )
+            return
+
+        if command == "start":
+            config = dict(self._task_navigation_config[task])
+            if pattern:
+                config["pattern"] = str(pattern).strip()
+            if carefulness:
+                config["carefulness"] = self._normalize_carefulness(carefulness)
+            if model_path is not None:
+                config["model_path"] = str(model_path or "").strip()
+            self._task_navigation_config[task] = config
+            self._start_navigation_task(
+                task,
+                client,
+                "task_result_generic",
+                websocket,
+                config,
             )
             return
 
@@ -942,6 +965,110 @@ class WebTeleopNode(Node):
         }
         self._latest_task4_polygon = payload
         self._schedule_broadcast(payload)
+
+    def _start_navigation_task(
+        self,
+        task: str,
+        client: Any,
+        result_type: str,
+        websocket: WebSocket,
+        config: dict[str, str],
+    ) -> None:
+        pattern = str(config.get("pattern", "")).strip()
+        if not pattern:
+            self._schedule_send(
+                websocket,
+                {
+                    "type": result_type,
+                    "task": task,
+                    "command": "start",
+                    "success": False,
+                    "message": "Kein Pattern gesetzt. Bitte zuerst ein Pattern eintragen.",
+                    **self._runtime_fields(),
+                },
+            )
+            return
+
+        if self._active_source != task:
+            self._schedule_send(
+                websocket,
+                {
+                    "type": result_type,
+                    "task": task,
+                    "command": "start",
+                    "success": False,
+                    "message": f"{SOURCE_LABELS.get(task, task)} muss im cmd_vel_selector als aktive Quelle ausgewählt sein.",
+                    **self._runtime_fields(),
+                },
+            )
+            return
+
+        ok, message = self._begin_task_start(task)
+        if not ok:
+            self._schedule_send(
+                websocket,
+                {
+                    "type": result_type,
+                    "task": task,
+                    "command": "start",
+                    "success": False,
+                    "message": message,
+                    **self._runtime_fields(),
+                },
+            )
+            return
+
+        if not self._service_ready(client):
+            self._finish_task_start(task, False)
+            self._schedule_send(
+                websocket,
+                {
+                    "type": result_type,
+                    "task": task,
+                    "command": "start",
+                    "success": False,
+                    "message": f"{SOURCE_LABELS.get(task, task)}-Start-Service ist nicht erreichbar.",
+                    **self._runtime_fields(),
+                },
+            )
+            return
+
+        request = StartNavigation.Request()
+        request.pattern = pattern
+        request.carefulness = self._normalize_carefulness(config.get("carefulness", "high"))
+        request.model_path = str(config.get("model_path", "")).strip()
+        future = client.call_async(request)
+
+        def finish(done_future: Any) -> None:
+            try:
+                response = done_future.result()
+                success = bool(response.success)
+                self._finish_task_start(task, success)
+                payload = {
+                    "type": result_type,
+                    "task": task,
+                    "command": "start",
+                    "success": success,
+                    "message": response.message,
+                    "pattern": request.pattern,
+                    "carefulness": request.carefulness,
+                    "model_path": request.model_path,
+                    **self._runtime_fields(),
+                }
+            except Exception as exc:
+                self._finish_task_start(task, False)
+                payload = {
+                    "type": result_type,
+                    "task": task,
+                    "command": "start",
+                    "success": False,
+                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
+                    **self._runtime_fields(),
+                }
+
+            self._schedule_send(websocket, payload)
+
+        future.add_done_callback(finish)
 
     def _trigger_task_client(
         self,
@@ -1199,8 +1326,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 )
 
             elif message_type == "set_navigation_pattern":
-                node.set_navigation_pattern(
+                node.configure_task_navigation(
+                    str(data.get("task", "task1")),
                     str(data.get("pattern", "")),
+                    str(data.get("carefulness", "high")),
+                    str(data.get("model_path", "")),
                     websocket,
                 )
 
@@ -1226,6 +1356,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     str(data.get("task", "")),
                     str(data.get("command", "")),
                     websocket,
+                    str(data.get("pattern", "")),
+                    str(data.get("carefulness", "high")),
+                    str(data.get("model_path", "")),
                 )
 
             elif message_type == "task4_command":
@@ -1239,6 +1372,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     str(data.get("command", "")),
                     bool(data.get("confirmed", False)),
                     websocket,
+                    str(data.get("pattern", "")),
+                    str(data.get("carefulness", "high")),
+                    str(data.get("model_path", "")),
                 )
 
     except (
