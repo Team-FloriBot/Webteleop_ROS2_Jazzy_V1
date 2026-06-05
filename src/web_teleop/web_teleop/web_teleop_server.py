@@ -35,16 +35,16 @@ except ImportError:  # pragma: no cover - depends on ROS installation
 import uvicorn
 
 
-VALID_SOURCES = ("none", "webteleop", "task1", "task2", "task3", "task4", "task5")
-TASK_SOURCES = ("task1", "task2", "task3", "task4")
+VALID_SOURCES = ("none", "webteleop", "tasks")
+TASK_SOURCE = "tasks"
 SOURCE_LABELS = {
-    "none": "Stopp / keine Quelle",
+    "none": "Stop",
     "webteleop": "Webteleop",
+    "tasks": "Tasks",
     "task1": "Task 1",
     "task2": "Task 2",
     "task3": "Task 3",
     "task4": "Task 4",
-    "task5": "Task 5",
 }
 
 
@@ -104,8 +104,16 @@ class WebTeleopNode(Node):
         self._latest_task4_robot_pose: dict[str, Any] | None = None
         self._task_navigation_config: dict[str, dict[str, str]] = {
             "task1": {"pattern": "", "carefulness": "high", "model_path": ""},
-            "task2": {"pattern": "", "carefulness": "high", "model_path": ""},
-            "task3": {"pattern": "", "carefulness": "high", "model_path": ""},
+            "task2": {
+                "pattern": "",
+                "carefulness": "high",
+                "model_path": "model/yolo26n_jutestripe_yellowpaper-seg.pt",
+            },
+            "task3": {
+                "pattern": "",
+                "carefulness": "high",
+                "model_path": "model/yolo26n_bee_beetle_butterfly-seg.pt",
+            },
         }
 
         self._cmd_vel_topic = self.declare_parameter(
@@ -318,7 +326,7 @@ class WebTeleopNode(Node):
             return
 
         running_task = self.running_task
-        if running_task is not None and source not in {running_task, "none"}:
+        if running_task is not None and source not in {TASK_SOURCE, "none"}:
             self._schedule_send(
                 websocket,
                 {
@@ -456,8 +464,8 @@ class WebTeleopNode(Node):
             "active_step": "",
             "can_set_pattern": True,
             "can_start": True,
-            "can_pause": True,
-            "can_resume": True,
+            "can_pause": False,
+            "can_resume": False,
             "can_abort": True,
             **self._runtime_fields(),
         })
@@ -526,12 +534,17 @@ class WebTeleopNode(Node):
             websocket,
         )
 
-    def reset_navigation(self, websocket: WebSocket) -> None:
+    def reset_navigation(self, websocket: WebSocket, task: str = "task1") -> None:
+        task = str(task or "task1").strip()
+        if task not in {"task1", "task2", "task3"}:
+            task = "task1"
+        result_type = "task_result" if task == "task1" else "task_result_generic"
         if not self._service_ready(self._reset_navigation_client):
             self._schedule_send(
                 websocket,
                 {
-                    "type": "task_result",
+                    "type": result_type,
+                    "task": task,
                     "command": "reset",
                     "success": False,
                     "message": "Reset-Service '/reset_navigation' ist nicht erreichbar.",
@@ -546,9 +559,10 @@ class WebTeleopNode(Node):
                 response = done_future.result()
                 success = bool(response.success)
                 if success:
-                    self._finish_task_stop("task1", True)
+                    self._finish_task_stop(task, True)
                 payload = {
-                    "type": "task_result",
+                    "type": result_type,
+                    "task": task,
                     "command": "reset",
                     "success": success,
                     "message": response.message,
@@ -556,7 +570,8 @@ class WebTeleopNode(Node):
                 }
             except Exception as exc:
                 payload = {
-                    "type": "task_result",
+                    "type": result_type,
+                    "task": task,
                     "command": "reset",
                     "success": False,
                     "message": f"Serviceaufruf fehlgeschlagen: {exc}",
@@ -751,13 +766,24 @@ class WebTeleopNode(Node):
                 **self._runtime_fields(),
             })
             return
+        if command == "stop":
+            self._trigger_task_client(
+                task,
+                self._stop_navigation_client,
+                "stop",
+                "StopNavigation-Service '/stop_navigation' ist nicht erreichbar.",
+                "task_result_generic",
+                websocket,
+            )
+            return
+
         if command != "start":
             self._schedule_send(websocket, {
                 "type": "task_result_generic",
                 "task": task,
                 "command": command,
                 "success": False,
-                "message": "Im aktuellen Repo sind für Task 2/3 keine Stop/Pause/Resume-Services implementiert.",
+                "message": "Unbekannter Task-Befehl.",
                 **self._runtime_fields(),
             })
             return
@@ -802,7 +828,7 @@ class WebTeleopNode(Node):
             )
             return
 
-        if command == "start" and self._active_source != "task4":
+        if command == "start" and self._active_source != TASK_SOURCE:
             self._schedule_send(
                 websocket,
                 {
@@ -810,7 +836,7 @@ class WebTeleopNode(Node):
                     "task": "task4",
                     "command": command,
                     "success": False,
-                    "message": "Task 4 muss im cmd_vel_selector als aktive Quelle ausgewählt sein.",
+                    "message": "Tasks muss in der cmd_vel-Weiche als aktive Quelle ausgewählt sein.",
                     **self._runtime_fields(),
                 },
             )
@@ -912,13 +938,13 @@ class WebTeleopNode(Node):
         websocket: WebSocket,
         config: dict[str, str],
     ) -> None:
-        if self._active_source != task:
+        if self._active_source != TASK_SOURCE:
             self._schedule_send(websocket, {
                 "type": result_type,
                 "task": task,
                 "command": "start",
                 "success": False,
-                "message": f"{SOURCE_LABELS.get(task, task)} muss im cmd_vel_selector als aktive Quelle ausgewählt sein.",
+                "message": "Tasks muss in der cmd_vel-Weiche als aktive Quelle ausgewählt sein.",
                 **self._runtime_fields(),
             })
             return
@@ -1263,7 +1289,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 node.request_navigation_status(websocket)
 
             elif message_type == "reset_navigation":
-                node.reset_navigation(websocket)
+                node.reset_navigation(
+                    websocket,
+                    str(data.get("task", "task1")),
+                )
 
             elif message_type == "reset_slam_map":
                 node.reset_slam_map(websocket)
