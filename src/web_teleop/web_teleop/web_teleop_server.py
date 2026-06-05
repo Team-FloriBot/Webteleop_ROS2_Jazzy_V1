@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import math
-import subprocess
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -15,7 +14,7 @@ from typing import Any
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from cmd_vel_selector.srv import SelectSource
-from fre2026_tasks_interfaces.srv import GetNavigationStatus, SetNavigationPattern
+from fre2026_tasks_interfaces.srv import SetScanProfile
 from maize_navigation_interfaces.srv import StartNavigation
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -29,6 +28,10 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
+try:
+    from slam_toolbox.srv import Reset as SlamToolboxReset
+except ImportError:  # pragma: no cover - depends on ROS installation
+    SlamToolboxReset = None
 import uvicorn
 
 
@@ -144,14 +147,6 @@ class WebTeleopNode(Node):
             SelectSource,
             "/cmd_vel_selector/select_source",
         )
-        self._set_pattern_client = self.create_client(
-            SetNavigationPattern,
-            "/set_navigation_pattern",
-        )
-        self._get_navigation_status_client = self.create_client(
-            GetNavigationStatus,
-            "/get_navigation_status",
-        )
         self._start_navigation_client = self.create_client(
             StartNavigation,
             "/start_navigation",
@@ -172,37 +167,14 @@ class WebTeleopNode(Node):
             Trigger,
             "/reset_navigation",
         )
-        self._task2_start_client = self.create_client(
-            StartNavigation,
-            "/task2/start_navigation",
+        self._front_scan_mux_client = self.create_client(
+            SetScanProfile,
+            "/front_scan_mux/set_profile",
         )
-        self._task2_stop_client = self.create_client(
-            Trigger,
-            "/task2/stop_navigation",
-        )
-        self._task2_pause_client = self.create_client(
-            Trigger,
-            "/task2/pause_navigation",
-        )
-        self._task2_resume_client = self.create_client(
-            Trigger,
-            "/task2/resume_navigation",
-        )
-        self._task3_start_client = self.create_client(
-            StartNavigation,
-            "/task3/start_navigation",
-        )
-        self._task3_stop_client = self.create_client(
-            Trigger,
-            "/task3/stop_navigation",
-        )
-        self._task3_pause_client = self.create_client(
-            Trigger,
-            "/task3/pause_navigation",
-        )
-        self._task3_resume_client = self.create_client(
-            Trigger,
-            "/task3/resume_navigation",
+        self._slam_reset_client = (
+            self.create_client(SlamToolboxReset, "/slam_toolbox/reset")
+            if SlamToolboxReset is not None
+            else None
         )
         self._task4_set_polygon_client = self.create_client(
             SetParameters,
@@ -414,9 +386,18 @@ class WebTeleopNode(Node):
     @staticmethod
     def _normalize_carefulness(value: Any) -> str:
         carefulness = str(value or "high").strip().lower()
-        if carefulness not in {"high", "medium", "low"}:
-            return "high"
-        return carefulness
+        return carefulness if carefulness in {"high", "medium", "low"} else "high"
+
+    @staticmethod
+    def _validate_pattern(pattern: str) -> tuple[bool, str]:
+        import re
+        pattern = str(pattern or "").strip()
+        if not pattern:
+            return False, "Pattern darf nicht leer sein."
+        invalid = [token for token in pattern.split() if re.fullmatch(r"([1-9][0-9]*)([LlRr])", token) is None]
+        if invalid:
+            return False, "Ungueltiges Pattern. Verwende z. B. '1L 2R 3L'."
+        return True, pattern
 
     def configure_task_navigation(
         self,
@@ -427,107 +408,59 @@ class WebTeleopNode(Node):
         websocket: WebSocket,
     ) -> None:
         if task not in self._task_navigation_config:
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "task_config_result",
-                    "task": task,
-                    "success": False,
-                    "message": "Unbekannte Task-Konfiguration.",
-                },
-            )
+            self._schedule_send(websocket, {
+                "type": "task_config_result",
+                "task": task,
+                "success": False,
+                "message": "Unbekannte Task-Konfiguration.",
+            })
             return
 
-        pattern = str(pattern or "").strip()
-        if not pattern:
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "task_config_result",
-                    "task": task,
-                    "success": False,
-                    "message": "Pattern darf nicht leer sein.",
-                },
-            )
+        ok, normalized_pattern = self._validate_pattern(pattern)
+        if not ok:
+            self._schedule_send(websocket, {
+                "type": "task_config_result",
+                "task": task,
+                "success": False,
+                "message": normalized_pattern,
+            })
             return
 
         config = {
-            "pattern": pattern,
+            "pattern": normalized_pattern,
             "carefulness": self._normalize_carefulness(carefulness),
-            "model_path": str(model_path or "").strip(),
+            "model_path": "" if task == "task1" else str(model_path or "").strip(),
         }
         self._task_navigation_config[task] = config
-        self._schedule_send(
-            websocket,
-            {
-                "type": "task_config_result",
-                "task": task,
-                "success": True,
-                "message": (
-                    f"{SOURCE_LABELS.get(task, task)} konfiguriert: "
-                    f"Pattern {config['pattern']}, Carefulness {config['carefulness']}."
-                ),
-                **config,
-            },
-        )
-
-    def set_navigation_pattern(self, pattern: str, websocket: WebSocket) -> None:
-        # maize_navigation startet seit StartNavigation.srv direkt mit pattern/carefulness/model_path.
-        # Der alte Button bleibt erhalten und schreibt daher die lokale Task-1-Konfiguration.
-        self.configure_task_navigation(
-            "task1",
-            pattern,
-            self._task_navigation_config["task1"]["carefulness"],
-            self._task_navigation_config["task1"]["model_path"],
-            websocket,
-        )
+        message = f"{SOURCE_LABELS.get(task, task)}: Pattern '{config['pattern']}', carefulness '{config['carefulness']}' uebernommen."
+        if config["model_path"]:
+            message += f" model_path: {config['model_path']}"
+        self._schedule_send(websocket, {
+            "type": "task_config_result",
+            "task": task,
+            "success": True,
+            "message": message,
+            **config,
+        })
 
     def request_navigation_status(self, websocket: WebSocket) -> None:
-        if not self._service_ready(self._get_navigation_status_client):
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "navigation_status",
-                    "success": False,
-                    "message": "GetNavigationStatus-Service ist nicht erreichbar.",
-                },
-            )
-            return
-
-        future = self._get_navigation_status_client.call_async(
-            GetNavigationStatus.Request()
-        )
-
-        def finish(done_future: Any) -> None:
-            try:
-                response = done_future.result()
-                payload = {
-                    "type": "navigation_status",
-                    "success": bool(response.success),
-                    "message": response.message,
-                    "mission_state": response.mission_state,
-                    "pattern_loaded": bool(response.pattern_loaded),
-                    "active_pattern": response.active_pattern,
-                    "active_step_index": int(response.active_step_index),
-                    "total_steps": int(response.total_steps),
-                    "active_step": response.active_step,
-                    "can_set_pattern": bool(response.can_set_pattern),
-                    "can_start": bool(response.can_start),
-                    "can_pause": bool(response.can_pause),
-                    "can_resume": bool(response.can_resume),
-                    "can_abort": bool(response.can_abort),
-                    **self._runtime_fields(),
-                }
-            except Exception as exc:
-                payload = {
-                    "type": "navigation_status",
-                    "success": False,
-                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
-                }
-
-            self._schedule_send(websocket, payload)
-
-        future.add_done_callback(finish)
+        self._schedule_send(websocket, {
+            "type": "navigation_status",
+            "success": True,
+            "message": "Im aktuellen FRE2026_Tasks-Repo ist kein /get_navigation_status-Service implementiert.",
+            "mission_state": "nicht verfuegbar",
+            "pattern_loaded": bool(self._task_navigation_config["task1"].get("pattern")),
+            "active_pattern": self._task_navigation_config["task1"].get("pattern", ""),
+            "active_step_index": 0,
+            "total_steps": 0,
+            "active_step": "",
+            "can_set_pattern": True,
+            "can_start": True,
+            "can_pause": True,
+            "can_resume": True,
+            "can_abort": True,
+            **self._runtime_fields(),
+        })
 
     def trigger_navigation(
         self,
@@ -536,37 +469,37 @@ class WebTeleopNode(Node):
         websocket: WebSocket,
         pattern: str = "",
         carefulness: str = "high",
-        model_path: str = "",
     ) -> None:
         confirmation_required = command in {"start", "pause"}
         if confirmation_required and not confirmed:
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "task_result",
-                    "command": command,
-                    "success": False,
-                    "message": "Befehl verworfen: explizite Bestätigung fehlt.",
-                },
-            )
+            self._schedule_send(websocket, {
+                "type": "task_result",
+                "command": command,
+                "success": False,
+                "message": "Befehl verworfen: explizite Bestätigung fehlt.",
+            })
             return
 
         if command == "start":
             config = dict(self._task_navigation_config["task1"])
             if pattern:
-                config["pattern"] = str(pattern).strip()
+                ok, normalized_pattern = self._validate_pattern(pattern)
+                if not ok:
+                    self._schedule_send(websocket, {
+                        "type": "task_result",
+                        "task": "task1",
+                        "command": "start",
+                        "success": False,
+                        "message": normalized_pattern,
+                        **self._runtime_fields(),
+                    })
+                    return
+                config["pattern"] = normalized_pattern
             if carefulness:
                 config["carefulness"] = self._normalize_carefulness(carefulness)
-            if model_path is not None:
-                config["model_path"] = str(model_path or "").strip()
+            config["model_path"] = ""
             self._task_navigation_config["task1"] = config
-            self._start_navigation_task(
-                "task1",
-                self._start_navigation_client,
-                "task_result",
-                websocket,
-                config,
-            )
+            self._start_navigation_task("task1", "task_result", websocket, config)
             return
 
         clients = {
@@ -576,15 +509,12 @@ class WebTeleopNode(Node):
         }
         client = clients.get(command)
         if client is None:
-            self._schedule_send(
-                websocket,
-                {
-                    "type": "task_result",
-                    "command": command,
-                    "success": False,
-                    "message": "Unbekannter Navigationsbefehl.",
-                },
-            )
+            self._schedule_send(websocket, {
+                "type": "task_result",
+                "command": command,
+                "success": False,
+                "message": "Unbekannter Navigationsbefehl.",
+            })
             return
 
         self._trigger_task_client(
@@ -637,66 +567,91 @@ class WebTeleopNode(Node):
         future.add_done_callback(finish)
 
     def reset_slam_map(self, websocket: WebSocket) -> None:
-        def call_reset_service() -> None:
-            command = [
-                "ros2",
-                "service",
-                "call",
-                "/slam_toolbox/reset",
-                "slam_toolbox/srv/Reset",
-                "{pause_new_measurements: false}",
-            ]
+        if self._slam_reset_client is None:
+            self._schedule_send(websocket, {
+                "type": "development_result",
+                "command": "reset_slam_map",
+                "success": False,
+                "message": "slam_toolbox/srv/Reset ist im Webteleop-Container nicht verfügbar.",
+            })
+            return
+        if not self._service_ready(self._slam_reset_client):
+            self._schedule_send(websocket, {
+                "type": "development_result",
+                "command": "reset_slam_map",
+                "success": False,
+                "message": "SLAM-Reset-Service '/slam_toolbox/reset' ist nicht erreichbar.",
+            })
+            return
 
+        request = SlamToolboxReset.Request()
+        request.pause_new_measurements = False
+        future = self._slam_reset_client.call_async(request)
+
+        def finish(done_future: Any) -> None:
             try:
-                result = subprocess.run(
-                    command,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    timeout=10.0,
-                )
-            except FileNotFoundError:
+                response = done_future.result()
+                result = getattr(response, "result", 0)
+                payload = {
+                    "type": "development_result",
+                    "command": "reset_slam_map",
+                    "success": True,
+                    "message": f"SLAM-Map wurde über '/slam_toolbox/reset' zurückgesetzt. result={result}",
+                }
+            except Exception as exc:
                 payload = {
                     "type": "development_result",
                     "command": "reset_slam_map",
                     "success": False,
-                    "message": "ros2 CLI ist im Webteleop-Container nicht verfügbar.",
+                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
                 }
-            except subprocess.TimeoutExpired:
-                payload = {
-                    "type": "development_result",
-                    "command": "reset_slam_map",
-                    "success": False,
-                    "message": "Timeout beim Aufruf von '/slam_toolbox/reset'. Prüfe ROS_DOMAIN_ID, Docker-Netzwerk und ob slam_toolbox läuft.",
-                }
-            else:
-                stdout = result.stdout.strip()
-                stderr = result.stderr.strip()
-                detail = stderr or stdout
-
-                if result.returncode == 0:
-                    payload = {
-                        "type": "development_result",
-                        "command": "reset_slam_map",
-                        "success": True,
-                        "message": "SLAM-Map wurde über '/slam_toolbox/reset' zurückgesetzt.",
-                    }
-                else:
-                    payload = {
-                        "type": "development_result",
-                        "command": "reset_slam_map",
-                        "success": False,
-                        "message": (
-                            "Serviceaufruf fehlgeschlagen. "
-                            "Prüfe, ob der Webteleop-Container den Service sieht und "
-                            "ob der Typ 'slam_toolbox/srv/Reset' dort verfügbar ist. "
-                            f"Details: {detail}"
-                        ),
-                    }
-
             self._schedule_send(websocket, payload)
 
-        threading.Thread(target=call_reset_service, daemon=True).start()
+        future.add_done_callback(finish)
+
+    def set_front_scan_profile(self, profile: str, websocket: WebSocket) -> None:
+        profile = str(profile or "").strip()
+        if profile not in {"rs_crop_scan", "rs_nonground_scan", "sick_front"}:
+            self._schedule_send(websocket, {
+                "type": "development_result",
+                "command": "set_scan_profile",
+                "success": False,
+                "message": "Ungültiges Laser-Profil.",
+            })
+            return
+        if not self._service_ready(self._front_scan_mux_client):
+            self._schedule_send(websocket, {
+                "type": "development_result",
+                "command": "set_scan_profile",
+                "success": False,
+                "message": "Laser-Mux-Service '/front_scan_mux/set_profile' ist nicht erreichbar.",
+            })
+            return
+
+        request = SetScanProfile.Request()
+        request.profile = profile
+        future = self._front_scan_mux_client.call_async(request)
+
+        def finish(done_future: Any) -> None:
+            try:
+                response = done_future.result()
+                payload = {
+                    "type": "development_result",
+                    "command": "set_scan_profile",
+                    "success": bool(response.success),
+                    "message": response.message,
+                    "active_profile": response.active_profile,
+                }
+            except Exception as exc:
+                payload = {
+                    "type": "development_result",
+                    "command": "set_scan_profile",
+                    "success": False,
+                    "message": f"Serviceaufruf fehlgeschlagen: {exc}",
+                }
+            self._schedule_send(websocket, payload)
+
+        future.add_done_callback(finish)
 
     def set_task4_polygon(self, polygon_coords: list[Any], websocket: WebSocket) -> None:
         try:
@@ -786,62 +741,46 @@ class WebTeleopNode(Node):
         carefulness: str = "high",
         model_path: str = "",
     ) -> None:
-        clients_by_task = {
-            "task2": {
-                "start": self._task2_start_client,
-                "stop": self._task2_stop_client,
-                "pause": self._task2_pause_client,
-                "resume": self._task2_resume_client,
-            },
-            "task3": {
-                "start": self._task3_start_client,
-                "stop": self._task3_stop_client,
-                "pause": self._task3_pause_client,
-                "resume": self._task3_resume_client,
-            },
-        }
-        clients = clients_by_task.get(task)
-        client = clients.get(command) if clients else None
-        if client is None:
-            self._schedule_send(
-                websocket,
-                {
+        if task not in {"task2", "task3"}:
+            self._schedule_send(websocket, {
+                "type": "task_result_generic",
+                "task": task,
+                "command": command,
+                "success": False,
+                "message": "Unbekannter Task-Befehl.",
+                **self._runtime_fields(),
+            })
+            return
+        if command != "start":
+            self._schedule_send(websocket, {
+                "type": "task_result_generic",
+                "task": task,
+                "command": command,
+                "success": False,
+                "message": "Im aktuellen Repo sind für Task 2/3 keine Stop/Pause/Resume-Services implementiert.",
+                **self._runtime_fields(),
+            })
+            return
+
+        config = dict(self._task_navigation_config[task])
+        if pattern:
+            ok, normalized_pattern = self._validate_pattern(pattern)
+            if not ok:
+                self._schedule_send(websocket, {
                     "type": "task_result_generic",
                     "task": task,
-                    "command": command,
+                    "command": "start",
                     "success": False,
-                    "message": "Unbekannter Task-Befehl.",
+                    "message": normalized_pattern,
                     **self._runtime_fields(),
-                },
-            )
-            return
-
-        if command == "start":
-            config = dict(self._task_navigation_config[task])
-            if pattern:
-                config["pattern"] = str(pattern).strip()
-            if carefulness:
-                config["carefulness"] = self._normalize_carefulness(carefulness)
-            if model_path is not None:
-                config["model_path"] = str(model_path or "").strip()
-            self._task_navigation_config[task] = config
-            self._start_navigation_task(
-                task,
-                client,
-                "task_result_generic",
-                websocket,
-                config,
-            )
-            return
-
-        self._trigger_task_client(
-            task,
-            client,
-            command,
-            f"{SOURCE_LABELS.get(task, task)}-Service '{command}' ist nicht erreichbar.",
-            "task_result_generic",
-            websocket,
-        )
+                })
+                return
+            config["pattern"] = normalized_pattern
+        if carefulness:
+            config["carefulness"] = self._normalize_carefulness(carefulness)
+        config["model_path"] = str(model_path or config.get("model_path", "")).strip()
+        self._task_navigation_config[task] = config
+        self._start_navigation_task(task, "task_result_generic", websocket, config)
 
     def trigger_task4_command(self, command: str, websocket: WebSocket) -> None:
         clients = {
@@ -969,75 +908,62 @@ class WebTeleopNode(Node):
     def _start_navigation_task(
         self,
         task: str,
-        client: Any,
         result_type: str,
         websocket: WebSocket,
         config: dict[str, str],
     ) -> None:
-        pattern = str(config.get("pattern", "")).strip()
-        if not pattern:
-            self._schedule_send(
-                websocket,
-                {
-                    "type": result_type,
-                    "task": task,
-                    "command": "start",
-                    "success": False,
-                    "message": "Kein Pattern gesetzt. Bitte zuerst ein Pattern eintragen.",
-                    **self._runtime_fields(),
-                },
-            )
+        if self._active_source != task:
+            self._schedule_send(websocket, {
+                "type": result_type,
+                "task": task,
+                "command": "start",
+                "success": False,
+                "message": f"{SOURCE_LABELS.get(task, task)} muss im cmd_vel_selector als aktive Quelle ausgewählt sein.",
+                **self._runtime_fields(),
+            })
             return
 
-        if self._active_source != task:
-            self._schedule_send(
-                websocket,
-                {
-                    "type": result_type,
-                    "task": task,
-                    "command": "start",
-                    "success": False,
-                    "message": f"{SOURCE_LABELS.get(task, task)} muss im cmd_vel_selector als aktive Quelle ausgewählt sein.",
-                    **self._runtime_fields(),
-                },
-            )
+        ok_pattern, pattern = self._validate_pattern(config.get("pattern", ""))
+        if not ok_pattern:
+            self._schedule_send(websocket, {
+                "type": result_type,
+                "task": task,
+                "command": "start",
+                "success": False,
+                "message": pattern,
+                **self._runtime_fields(),
+            })
             return
 
         ok, message = self._begin_task_start(task)
         if not ok:
-            self._schedule_send(
-                websocket,
-                {
-                    "type": result_type,
-                    "task": task,
-                    "command": "start",
-                    "success": False,
-                    "message": message,
-                    **self._runtime_fields(),
-                },
-            )
+            self._schedule_send(websocket, {
+                "type": result_type,
+                "task": task,
+                "command": "start",
+                "success": False,
+                "message": message,
+                **self._runtime_fields(),
+            })
             return
 
-        if not self._service_ready(client):
+        if not self._service_ready(self._start_navigation_client):
             self._finish_task_start(task, False)
-            self._schedule_send(
-                websocket,
-                {
-                    "type": result_type,
-                    "task": task,
-                    "command": "start",
-                    "success": False,
-                    "message": f"{SOURCE_LABELS.get(task, task)}-Start-Service ist nicht erreichbar.",
-                    **self._runtime_fields(),
-                },
-            )
+            self._schedule_send(websocket, {
+                "type": result_type,
+                "task": task,
+                "command": "start",
+                "success": False,
+                "message": "StartNavigation-Service '/start_navigation' ist nicht erreichbar.",
+                **self._runtime_fields(),
+            })
             return
 
         request = StartNavigation.Request()
         request.pattern = pattern
         request.carefulness = self._normalize_carefulness(config.get("carefulness", "high"))
-        request.model_path = str(config.get("model_path", "")).strip()
-        future = client.call_async(request)
+        request.model_path = "" if task == "task1" else str(config.get("model_path", "")).strip()
+        future = self._start_navigation_client.call_async(request)
 
         def finish(done_future: Any) -> None:
             try:
@@ -1052,7 +978,7 @@ class WebTeleopNode(Node):
                     "message": response.message,
                     "pattern": request.pattern,
                     "carefulness": request.carefulness,
-                    "model_path": request.model_path,
+                    **({"model_path": request.model_path} if request.model_path else {}),
                     **self._runtime_fields(),
                 }
             except Exception as exc:
@@ -1065,7 +991,6 @@ class WebTeleopNode(Node):
                     "message": f"Serviceaufruf fehlgeschlagen: {exc}",
                     **self._runtime_fields(),
                 }
-
             self._schedule_send(websocket, payload)
 
         future.add_done_callback(finish)
@@ -1325,9 +1250,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     json.dumps(node.status_payload())
                 )
 
-            elif message_type == "set_navigation_pattern":
+            elif message_type == "configure_task_navigation":
                 node.configure_task_navigation(
-                    str(data.get("task", "task1")),
+                    str(data.get("task", "")),
                     str(data.get("pattern", "")),
                     str(data.get("carefulness", "high")),
                     str(data.get("model_path", "")),
@@ -1342,6 +1267,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
             elif message_type == "reset_slam_map":
                 node.reset_slam_map(websocket)
+
+            elif message_type == "set_front_scan_profile":
+                node.set_front_scan_profile(
+                    str(data.get("profile", "")),
+                    websocket,
+                )
 
             elif message_type == "set_task4_polygon":
                 raw_coords = data.get("polygon_coords", [])
@@ -1374,7 +1305,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     websocket,
                     str(data.get("pattern", "")),
                     str(data.get("carefulness", "high")),
-                    str(data.get("model_path", "")),
                 )
 
     except (
