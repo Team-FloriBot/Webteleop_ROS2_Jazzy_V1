@@ -606,6 +606,21 @@
           <button id="setPatternButton" class="task-button">Pattern setzen</button>
         </div>
 
+        <div class="pattern-row">
+          <select id="task1CarefulnessInput" class="task-button">
+            <option value="high" selected>high</option>
+            <option value="medium">medium</option>
+            <option value="low">low</option>
+          </select>
+          <input
+            id="task1ModelPathInput"
+            type="text"
+            placeholder="model_path optional"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+
         <div class="task-grid">
           <button id="startTaskButton" class="task-button primary">Start</button>
           <button id="pauseTaskButton" class="task-button">Pause</button>
@@ -634,6 +649,18 @@
           <div>Ausgabe: <strong>öffentliches Signal, optional CSV-Log</strong></div>
         </div>
 
+        <div class="pattern-row">
+          <input id="task2PatternInput" type="text" placeholder="Pattern, z. B. 1L 1R 1L" autocomplete="off" spellcheck="false" />
+          <select id="task2CarefulnessInput" class="task-button">
+            <option value="high" selected>high</option>
+            <option value="medium">medium</option>
+            <option value="low">low</option>
+          </select>
+        </div>
+        <div class="pattern-row">
+          <input id="task2ModelPathInput" type="text" placeholder="model_path für Plant-Health-Modell optional" autocomplete="off" spellcheck="false" />
+        </div>
+
         <div class="task-grid">
           <button id="startTask2Button" class="task-button primary">Start</button>
           <button id="pauseTask2Button" class="task-button">Unterbrechen</button>
@@ -653,6 +680,18 @@
         <div class="task-status">
           <div>Aufgabe: <strong>10 Stationen mit Biene, Schädling oder Schmetterling</strong></div>
           <div>Ausgabe: <strong>sichtbares und hörbares Klassifikationssignal</strong></div>
+        </div>
+
+        <div class="pattern-row">
+          <input id="task3PatternInput" type="text" placeholder="Pattern, z. B. 1L 1R" autocomplete="off" spellcheck="false" />
+          <select id="task3CarefulnessInput" class="task-button">
+            <option value="high" selected>high</option>
+            <option value="medium">medium</option>
+            <option value="low">low</option>
+          </select>
+        </div>
+        <div class="pattern-row">
+          <input id="task3ModelPathInput" type="text" placeholder="model_path für Biodiversity-Modell optional" autocomplete="off" spellcheck="false" />
         </div>
 
         <div class="task-grid">
@@ -771,6 +810,8 @@
   const stick = document.getElementById("stick");
   const outElement = document.getElementById("out");
   const patternInput = document.getElementById("patternInput");
+  const task1CarefulnessInput = document.getElementById("task1CarefulnessInput");
+  const task1ModelPathInput = document.getElementById("task1ModelPathInput");
   const setPatternButton = document.getElementById("setPatternButton");
   const startTaskButton = document.getElementById("startTaskButton");
   const pauseTaskButton = document.getElementById("pauseTaskButton");
@@ -781,10 +822,16 @@
   const pauseTask2Button = document.getElementById("pauseTask2Button");
   const resumeTask2Button = document.getElementById("resumeTask2Button");
   const stopTask2Button = document.getElementById("stopTask2Button");
+  const task2PatternInput = document.getElementById("task2PatternInput");
+  const task2CarefulnessInput = document.getElementById("task2CarefulnessInput");
+  const task2ModelPathInput = document.getElementById("task2ModelPathInput");
   const startTask3Button = document.getElementById("startTask3Button");
   const pauseTask3Button = document.getElementById("pauseTask3Button");
   const resumeTask3Button = document.getElementById("resumeTask3Button");
   const stopTask3Button = document.getElementById("stopTask3Button");
+  const task3PatternInput = document.getElementById("task3PatternInput");
+  const task3CarefulnessInput = document.getElementById("task3CarefulnessInput");
+  const task3ModelPathInput = document.getElementById("task3ModelPathInput");
   const task2Feedback = document.getElementById("task2Feedback");
   const task3Feedback = document.getElementById("task3Feedback");
   const task4Feedback = document.getElementById("task4Feedback");
@@ -1170,6 +1217,13 @@
         }
       }
 
+      if (message.type === "task_config_result") {
+        const feedbackElement = message.task === "task1"
+          ? taskFeedback
+          : (message.task === "task2" ? task2Feedback : task3Feedback);
+        showFeedback(feedbackElement, message.message, message.success);
+      }
+
       if (message.type === "task_result") {
         updateRuntimeState(message);
         showFeedback(taskFeedback, message.message, message.success);
@@ -1440,7 +1494,13 @@
       return;
     }
 
-    sendTaskMessage({ type: "set_navigation_pattern", pattern });
+    sendTaskMessage({
+      type: "set_navigation_pattern",
+      task: "task1",
+      pattern,
+      carefulness: task1CarefulnessInput.value,
+      model_path: task1ModelPathInput.value.trim()
+    });
   });
 
   startTaskButton.addEventListener("click", () => {
@@ -1449,7 +1509,19 @@
       return;
     }
 
-    sendTaskMessage({ type: "navigation_command", command: "start", confirmed: true });
+    const pattern = patternInput.value.trim();
+    if (pattern.length === 0) {
+      showFeedback(taskFeedback, "Pattern darf nicht leer sein.", false);
+      return;
+    }
+    sendTaskMessage({
+      type: "navigation_command",
+      command: "start",
+      confirmed: true,
+      pattern,
+      carefulness: task1CarefulnessInput.value,
+      model_path: task1ModelPathInput.value.trim()
+    });
   });
 
   pauseTaskButton.addEventListener("click", () => {
@@ -1468,6 +1540,24 @@
     sendTaskMessage({ type: "reset_navigation" });
   });
 
+  function taskNavigationConfig(task) {
+    if (task === "task2") {
+      return {
+        pattern: task2PatternInput.value.trim(),
+        carefulness: task2CarefulnessInput.value,
+        model_path: task2ModelPathInput.value.trim()
+      };
+    }
+    if (task === "task3") {
+      return {
+        pattern: task3PatternInput.value.trim(),
+        carefulness: task3CarefulnessInput.value,
+        model_path: task3ModelPathInput.value.trim()
+      };
+    }
+    return { pattern: "", carefulness: "high", model_path: "" };
+  }
+
   function sendGenericTaskCommand(task, command, feedbackElement) {
     if (command === "start" && activeSource !== task) {
       showFeedback(feedbackElement, `${labels[task]} muss als aktive Quelle ausgewählt sein.`, false);
@@ -1479,7 +1569,13 @@
       return;
     }
 
-    sendTaskMessage({ type: "task_command", task, command });
+    const config = taskNavigationConfig(task);
+    if (command === "start" && config.pattern.length === 0) {
+      showFeedback(feedbackElement, "Pattern darf nicht leer sein.", false);
+      return;
+    }
+
+    sendTaskMessage({ type: "task_command", task, command, ...config });
   }
 
   startTask2Button.addEventListener("click", () => sendGenericTaskCommand("task2", "start", task2Feedback));
