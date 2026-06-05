@@ -592,7 +592,7 @@
       <div class="card">
         <div>
           <div class="title">Task 1 Navigation</div>
-          <div class="muted">Pattern setzen und Task-1-Navigation steuern.</div>
+          <div class="muted">Pattern wird beim Start an /start_navigation übergeben. Task 1 verwendet keinen model_path.</div>
         </div>
 
         <div class="pattern-row">
@@ -603,22 +603,12 @@
             autocomplete="off"
             spellcheck="false"
           />
-          <button id="setPatternButton" class="task-button">Pattern setzen</button>
-        </div>
-
-        <div class="pattern-row">
-          <select id="task1CarefulnessInput" class="task-button">
-            <option value="high" selected>high</option>
+          <select id="task1CarefulnessInput" class="task-button" aria-label="Task 1 Carefulness">
+            <option value="high">high</option>
             <option value="medium">medium</option>
             <option value="low">low</option>
           </select>
-          <input
-            id="task1ModelPathInput"
-            type="text"
-            placeholder="model_path optional"
-            autocomplete="off"
-            spellcheck="false"
-          />
+          <button id="configureTask1Button" class="task-button">Pattern übernehmen</button>
         </div>
 
         <div class="task-grid">
@@ -641,31 +631,22 @@
       <div class="card">
         <div>
           <div class="title">Task 2 Plant Health Detection</div>
-          <div class="muted">Erkennung kranker Pflanzen starten, unterbrechen und stoppen.</div>
-        </div>
-
-        <div class="task-status">
-          <div>Aufgabe: <strong>5 gekrümmte Reihen, kranke Pflanzen innerhalb 40 cm erkennen</strong></div>
-          <div>Ausgabe: <strong>öffentliches Signal, optional CSV-Log</strong></div>
+          <div class="muted">Im Repo gibt es dafür keinen eigenen /task2/*-Service. Start nutzt derzeit denselben /start_navigation-Service.</div>
         </div>
 
         <div class="pattern-row">
-          <input id="task2PatternInput" type="text" placeholder="Pattern, z. B. 1L 1R 1L" autocomplete="off" spellcheck="false" />
-          <select id="task2CarefulnessInput" class="task-button">
-            <option value="high" selected>high</option>
+          <input id="task2PatternInput" type="text" placeholder="z. B. 1L 2R 3L" autocomplete="off" spellcheck="false" />
+          <select id="task2CarefulnessInput" class="task-button" aria-label="Task 2 Carefulness">
+            <option value="high">high</option>
             <option value="medium">medium</option>
             <option value="low">low</option>
           </select>
-        </div>
-        <div class="pattern-row">
-          <input id="task2ModelPathInput" type="text" placeholder="model_path für Plant-Health-Modell optional" autocomplete="off" spellcheck="false" />
+          <input id="task2ModelPathInput" type="text" placeholder="model_path optional" autocomplete="off" spellcheck="false" />
+          <button id="configureTask2Button" class="task-button">Pattern übernehmen</button>
         </div>
 
         <div class="task-grid">
           <button id="startTask2Button" class="task-button primary">Start</button>
-          <button id="pauseTask2Button" class="task-button">Unterbrechen</button>
-          <button id="resumeTask2Button" class="task-button">Fortsetzen</button>
-          <button id="stopTask2Button" class="task-button stop">Stop</button>
         </div>
 
         <div id="task2Feedback" class="feedback"></div>
@@ -674,31 +655,22 @@
       <div class="card">
         <div>
           <div class="title">Task 3 Biodiversity Monitoring</div>
-          <div class="muted">Insektenstationen klassifizieren und Task-3-Ablauf steuern.</div>
-        </div>
-
-        <div class="task-status">
-          <div>Aufgabe: <strong>10 Stationen mit Biene, Schädling oder Schmetterling</strong></div>
-          <div>Ausgabe: <strong>sichtbares und hörbares Klassifikationssignal</strong></div>
+          <div class="muted">Im Repo gibt es dafür keinen eigenen /task3/*-Service. Start nutzt derzeit denselben /start_navigation-Service.</div>
         </div>
 
         <div class="pattern-row">
-          <input id="task3PatternInput" type="text" placeholder="Pattern, z. B. 1L 1R" autocomplete="off" spellcheck="false" />
-          <select id="task3CarefulnessInput" class="task-button">
-            <option value="high" selected>high</option>
+          <input id="task3PatternInput" type="text" placeholder="z. B. 1L 2R 3L" autocomplete="off" spellcheck="false" />
+          <select id="task3CarefulnessInput" class="task-button" aria-label="Task 3 Carefulness">
+            <option value="high">high</option>
             <option value="medium">medium</option>
             <option value="low">low</option>
           </select>
-        </div>
-        <div class="pattern-row">
-          <input id="task3ModelPathInput" type="text" placeholder="model_path für Biodiversity-Modell optional" autocomplete="off" spellcheck="false" />
+          <input id="task3ModelPathInput" type="text" placeholder="model_path optional" autocomplete="off" spellcheck="false" />
+          <button id="configureTask3Button" class="task-button">Pattern übernehmen</button>
         </div>
 
         <div class="task-grid">
           <button id="startTask3Button" class="task-button primary">Start</button>
-          <button id="pauseTask3Button" class="task-button">Unterbrechen</button>
-          <button id="resumeTask3Button" class="task-button">Fortsetzen</button>
-          <button id="stopTask3Button" class="task-button stop">Stop</button>
         </div>
 
         <div id="task3Feedback" class="feedback"></div>
@@ -762,12 +734,16 @@
         </div>
 
         <div class="task-status">
-          <div>Service: <strong>/slam_toolbox/reset</strong></div>
-          <div>Request: <strong>pause_new_measurements: false</strong></div>
+          <div>SLAM-Service: <strong>/slam_toolbox/reset</strong></div>
+          <div>SLAM-Request: <strong>pause_new_measurements: false</strong></div>
+          <div>Laser-Mux-Service: <strong>/front_scan_mux/set_profile</strong></div>
         </div>
 
         <div class="task-grid">
           <button id="resetSlamMapButton" class="task-button stop">SLAM-Map zurücksetzen</button>
+          <button class="task-button" data-scan-profile="rs_crop_scan">Robosense Crop</button>
+          <button class="task-button" data-scan-profile="rs_nonground_scan">Robosense Non-Ground</button>
+          <button class="task-button" data-scan-profile="sick_front">SICK Front</button>
         </div>
 
         <div id="developmentFeedback" class="feedback"></div>
@@ -810,25 +786,20 @@
   const stick = document.getElementById("stick");
   const outElement = document.getElementById("out");
   const patternInput = document.getElementById("patternInput");
+  const configureTask1Button = document.getElementById("configureTask1Button");
   const task1CarefulnessInput = document.getElementById("task1CarefulnessInput");
-  const task1ModelPathInput = document.getElementById("task1ModelPathInput");
-  const setPatternButton = document.getElementById("setPatternButton");
   const startTaskButton = document.getElementById("startTaskButton");
   const pauseTaskButton = document.getElementById("pauseTaskButton");
   const resumeTaskButton = document.getElementById("resumeTaskButton");
   const stopTaskButton = document.getElementById("stopTaskButton");
   const resetTaskButton = document.getElementById("resetTaskButton");
   const startTask2Button = document.getElementById("startTask2Button");
-  const pauseTask2Button = document.getElementById("pauseTask2Button");
-  const resumeTask2Button = document.getElementById("resumeTask2Button");
-  const stopTask2Button = document.getElementById("stopTask2Button");
+  const configureTask2Button = document.getElementById("configureTask2Button");
   const task2PatternInput = document.getElementById("task2PatternInput");
   const task2CarefulnessInput = document.getElementById("task2CarefulnessInput");
   const task2ModelPathInput = document.getElementById("task2ModelPathInput");
   const startTask3Button = document.getElementById("startTask3Button");
-  const pauseTask3Button = document.getElementById("pauseTask3Button");
-  const resumeTask3Button = document.getElementById("resumeTask3Button");
-  const stopTask3Button = document.getElementById("stopTask3Button");
+  const configureTask3Button = document.getElementById("configureTask3Button");
   const task3PatternInput = document.getElementById("task3PatternInput");
   const task3CarefulnessInput = document.getElementById("task3CarefulnessInput");
   const task3ModelPathInput = document.getElementById("task3ModelPathInput");
@@ -854,6 +825,7 @@
   const task4PlanText = document.getElementById("task4PlanText");
   const resetSlamMapButton = document.getElementById("resetSlamMapButton");
   const developmentFeedback = document.getElementById("developmentFeedback");
+  const scanProfileButtons = Array.from(document.querySelectorAll("[data-scan-profile]"));
   const missionState = document.getElementById("missionState");
   const activePattern = document.getElementById("activePattern");
   const activeStep = document.getElementById("activeStep");
@@ -1127,14 +1099,6 @@
     startTask3Button.disabled = activeSource !== "task3" || runningTask !== null;
     startTask4Button.disabled = activeSource !== "task4" || runningTask !== null;
 
-    pauseTask2Button.disabled = runningTask !== "task2";
-    resumeTask2Button.disabled = runningTask !== "task2";
-    stopTask2Button.disabled = runningTask !== "task2";
-
-    pauseTask3Button.disabled = runningTask !== "task3";
-    resumeTask3Button.disabled = runningTask !== "task3";
-    stopTask3Button.disabled = runningTask !== "task3";
-
     stopTask4Button.disabled = runningTask !== "task4";
   }
 
@@ -1148,8 +1112,9 @@
       activeStep.textContent = "–";
     }
 
-    setPatternButton.disabled = !message.can_set_pattern;
+    configureTask1Button.disabled = !message.can_set_pattern;
     patternInput.disabled = !message.can_set_pattern;
+    task1CarefulnessInput.disabled = !message.can_set_pattern;
     startTaskButton.disabled = !message.can_start || activeSource !== "task1" || taskIsBlocked("task1");
     pauseTaskButton.disabled = !message.can_pause || runningTask !== "task1";
     resumeTaskButton.disabled = !message.can_resume || runningTask !== "task1";
@@ -1218,10 +1183,11 @@
       }
 
       if (message.type === "task_config_result") {
-        const feedbackElement = message.task === "task1"
-          ? taskFeedback
-          : (message.task === "task2" ? task2Feedback : task3Feedback);
+        const feedbackElement = message.task === "task1" ? taskFeedback : (message.task === "task2" ? task2Feedback : task3Feedback);
         showFeedback(feedbackElement, message.message, message.success);
+        if (message.task === "task1" && message.pattern) {
+          activePattern.textContent = message.pattern;
+        }
       }
 
       if (message.type === "task_result") {
@@ -1486,21 +1452,32 @@
   vMaxSlider.addEventListener("input", updateSliderLabels);
   wMaxSlider.addEventListener("input", updateSliderLabels);
 
-  setPatternButton.addEventListener("click", () => {
-    const pattern = patternInput.value.trim();
-
+  function configureTask(task, patternElement, carefulnessElement, modelPathElement, feedbackElement) {
+    const pattern = patternElement.value.trim();
     if (pattern.length === 0) {
-      showFeedback(taskFeedback, "Pattern darf nicht leer sein.", false);
-      return;
+      showFeedback(feedbackElement, "Pattern darf nicht leer sein.", false);
+      return false;
     }
-
     sendTaskMessage({
-      type: "set_navigation_pattern",
-      task: "task1",
+      type: "configure_task_navigation",
+      task,
       pattern,
-      carefulness: task1CarefulnessInput.value,
-      model_path: task1ModelPathInput.value.trim()
+      carefulness: carefulnessElement.value,
+      model_path: modelPathElement ? modelPathElement.value.trim() : ""
     });
+    return true;
+  }
+
+  configureTask1Button.addEventListener("click", () => {
+    configureTask("task1", patternInput, task1CarefulnessInput, null, taskFeedback);
+  });
+
+  configureTask2Button.addEventListener("click", () => {
+    configureTask("task2", task2PatternInput, task2CarefulnessInput, task2ModelPathInput, task2Feedback);
+  });
+
+  configureTask3Button.addEventListener("click", () => {
+    configureTask("task3", task3PatternInput, task3CarefulnessInput, task3ModelPathInput, task3Feedback);
   });
 
   startTaskButton.addEventListener("click", () => {
@@ -1509,18 +1486,12 @@
       return;
     }
 
-    const pattern = patternInput.value.trim();
-    if (pattern.length === 0) {
-      showFeedback(taskFeedback, "Pattern darf nicht leer sein.", false);
-      return;
-    }
     sendTaskMessage({
       type: "navigation_command",
       command: "start",
       confirmed: true,
-      pattern,
-      carefulness: task1CarefulnessInput.value,
-      model_path: task1ModelPathInput.value.trim()
+      pattern: patternInput.value.trim(),
+      carefulness: task1CarefulnessInput.value
     });
   });
 
@@ -1540,53 +1511,35 @@
     sendTaskMessage({ type: "reset_navigation" });
   });
 
-  function taskNavigationConfig(task) {
-    if (task === "task2") {
-      return {
-        pattern: task2PatternInput.value.trim(),
-        carefulness: task2CarefulnessInput.value,
-        model_path: task2ModelPathInput.value.trim()
-      };
-    }
-    if (task === "task3") {
-      return {
-        pattern: task3PatternInput.value.trim(),
-        carefulness: task3CarefulnessInput.value,
-        model_path: task3ModelPathInput.value.trim()
-      };
-    }
-    return { pattern: "", carefulness: "high", model_path: "" };
-  }
-
-  function sendGenericTaskCommand(task, command, feedbackElement) {
-    if (command === "start" && activeSource !== task) {
+  function sendGenericTaskStart(task, patternElement, carefulnessElement, modelPathElement, feedbackElement) {
+    if (activeSource !== task) {
       showFeedback(feedbackElement, `${labels[task]} muss als aktive Quelle ausgewählt sein.`, false);
       return;
     }
 
-    if (command === "start" && runningTask !== null) {
+    if (runningTask !== null) {
       showFeedback(feedbackElement, `${labels[runningTask] || runningTask} läuft bereits. Bitte zuerst stoppen.`, false);
       return;
     }
 
-    const config = taskNavigationConfig(task);
-    if (command === "start" && config.pattern.length === 0) {
+    const pattern = patternElement.value.trim();
+    if (pattern.length === 0) {
       showFeedback(feedbackElement, "Pattern darf nicht leer sein.", false);
       return;
     }
 
-    sendTaskMessage({ type: "task_command", task, command, ...config });
+    sendTaskMessage({
+      type: "task_command",
+      task,
+      command: "start",
+      pattern,
+      carefulness: carefulnessElement.value,
+      model_path: modelPathElement.value.trim()
+    });
   }
 
-  startTask2Button.addEventListener("click", () => sendGenericTaskCommand("task2", "start", task2Feedback));
-  pauseTask2Button.addEventListener("click", () => sendGenericTaskCommand("task2", "pause", task2Feedback));
-  resumeTask2Button.addEventListener("click", () => sendGenericTaskCommand("task2", "resume", task2Feedback));
-  stopTask2Button.addEventListener("click", () => sendGenericTaskCommand("task2", "stop", task2Feedback));
-
-  startTask3Button.addEventListener("click", () => sendGenericTaskCommand("task3", "start", task3Feedback));
-  pauseTask3Button.addEventListener("click", () => sendGenericTaskCommand("task3", "pause", task3Feedback));
-  resumeTask3Button.addEventListener("click", () => sendGenericTaskCommand("task3", "resume", task3Feedback));
-  stopTask3Button.addEventListener("click", () => sendGenericTaskCommand("task3", "stop", task3Feedback));
+  startTask2Button.addEventListener("click", () => sendGenericTaskStart("task2", task2PatternInput, task2CarefulnessInput, task2ModelPathInput, task2Feedback));
+  startTask3Button.addEventListener("click", () => sendGenericTaskStart("task3", task3PatternInput, task3CarefulnessInput, task3ModelPathInput, task3Feedback));
 
   task4CornersInput.addEventListener("input", () => {
     task4PlanPoints = [];
@@ -1658,6 +1611,12 @@
     }
 
     sendTaskMessage({ type: "reset_slam_map" });
+  });
+
+  scanProfileButtons.forEach(button => {
+    button.addEventListener("click", () => {
+      sendTaskMessage({ type: "set_front_scan_profile", profile: button.dataset.scanProfile });
+    });
   });
 
   document.addEventListener("visibilitychange", () => {
