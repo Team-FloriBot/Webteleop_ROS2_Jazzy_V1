@@ -671,7 +671,9 @@
           </label>
           <label for="task2ModelPathInput">
             <span>model_path:</span>
-            <input id="task2ModelPathInput" type="text" value="model/yolo26n_jutestripe_yellowpaper-seg.pt" autocomplete="off" spellcheck="false" />
+            <select id="task2ModelPathInput" aria-label="Task 2 KI-Modell">
+              <option value="model/yolo26n_jutestripe_yellowpaper-seg.pt">model/yolo26n_jutestripe_yellowpaper-seg.pt</option>
+            </select>
           </label>
           <div class="pattern-actions">
             <select id="task2CarefulnessInput" class="task-button" aria-label="Task 2 Carefulness">
@@ -709,7 +711,9 @@
           </label>
           <label for="task3ModelPathInput">
             <span>model_path:</span>
-            <input id="task3ModelPathInput" type="text" value="model/yolo26n_bee_beetle_butterfly-seg.pt" autocomplete="off" spellcheck="false" />
+            <select id="task3ModelPathInput" aria-label="Task 3 KI-Modell">
+              <option value="model/yolo26n_bee_beetle_butterfly-seg.pt">model/yolo26n_bee_beetle_butterfly-seg.pt</option>
+            </select>
           </label>
           <div class="pattern-actions">
             <select id="task3CarefulnessInput" class="task-button" aria-label="Task 3 Carefulness">
@@ -871,6 +875,8 @@
   const stopTask3Button = document.getElementById("stopTask3Button");
   const resetTask3Button = document.getElementById("resetTask3Button");
   const task2Feedback = document.getElementById("task2Feedback");
+  const defaultTask2Model = "model/yolo26n_jutestripe_yellowpaper-seg.pt";
+  const defaultTask3Model = "model/yolo26n_bee_beetle_butterfly-seg.pt";
   const task3Feedback = document.getElementById("task3Feedback");
   const task4Feedback = document.getElementById("task4Feedback");
   const task4CornersInput = document.getElementById("task4CornersInput");
@@ -1242,6 +1248,31 @@
     updateTaskButtons();
   }
 
+  function updateModelSelect(selectElement, models, defaultModel) {
+    const previousValue = selectElement.value || defaultModel;
+    const available = Array.isArray(models)
+      ? models.map(model => String(model).trim()).filter(Boolean)
+      : [];
+
+    const options = [...new Set(available)];
+    if (!options.includes(previousValue)) options.unshift(previousValue);
+    if (!options.includes(defaultModel)) options.unshift(defaultModel);
+
+    selectElement.replaceChildren(...options.map(model => {
+      const option = document.createElement("option");
+      option.value = model;
+      option.textContent = model;
+      return option;
+    }));
+
+    selectElement.value = options.includes(previousValue) ? previousValue : defaultModel;
+  }
+
+  function updateAvailableModels(models) {
+    updateModelSelect(task2ModelPathInput, models, defaultTask2Model);
+    updateModelSelect(task3ModelPathInput, models, defaultTask3Model);
+  }
+
   function connectWebSocket() {
     const protocol = location.protocol === "https:" ? "wss" : "ws";
     websocket = new WebSocket(`${protocol}://${location.host}/ws`);
@@ -1255,6 +1286,10 @@
 
     websocket.onmessage = event => {
       const message = JSON.parse(event.data);
+
+      if (message.type === "available_models") {
+        updateAvailableModels(message.models);
+      }
 
       if (message.type === "selector_status") {
         updateRuntimeState(message);
@@ -1774,6 +1809,7 @@
   updateSliderLabels();
   updateTask4Preview();
   updateActiveSource("unknown");
+  updateAvailableModels([]);
   connectWebSocket();
 </script>
 </body>
