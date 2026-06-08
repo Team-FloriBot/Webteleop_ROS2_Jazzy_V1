@@ -1025,17 +1025,75 @@
       && (!task4PlanFrame || !task4PolygonFrame || task4PolygonFrame === task4PlanFrame);
 
     /*
-      Robotzentrierte Darstellung für Task 4:
-      - Der Roboter ist im Plot immer fest bei lokal (0, 0).
-      - Die Fahrtrichtung des Roboters zeigt immer nach oben.
-      - ROS/base_link: +x = vorwärts, +y = links.
-      - SVG: +x nach rechts, +y nach unten.
-      Daraus folgt für die Anzeige: svg_x = center_x - y, svg_y = center_y - x.
+      Polygon und Pfad werden von Task 4 im target_frame (normalerweise map)
+      publiziert. Die Formulareingabe ist dagegen im beim Planungsstart
+      eingefrorenen base_link-Koordinatensystem definiert.
+
+      Aus zwei korrespondierenden Polygonpunkten wird deshalb die starre
+      2D-Transformation zwischen lokalem Planungsframe und target_frame
+      rekonstruiert. Anschließend werden Polygon und Pfad für die Anzeige
+      wieder in das lokale System zurücktransformiert. Damit liegt [0, 0]
+      an der Roboterpose beim Start der Planung und +x zeigt nach vorne.
     */
-    const localRobotPose = { x: 0.0, y: 0.0, theta: 0.0, frame_id: "base_link", child_frame_id: "base_link" };
-    const polygonPoints = havePlan ? (haveTargetPolygon ? task4PolygonPoints : inputPoints) : inputPoints;
-    const robotPose = localRobotPose;
-    const displayedPoints = polygonPoints.concat(task4PlanPoints, [robotPose]);
+    function buildTargetToLocalTransform(localPoints, targetPoints) {
+      if (localPoints.length < 2 || targetPoints.length < 2) {
+        return null;
+      }
+
+      const localOrigin = localPoints[0];
+      const targetOrigin = targetPoints[0];
+      let referenceIndex = -1;
+
+      for (let index = 1; index < Math.min(localPoints.length, targetPoints.length); index += 1) {
+        const localDx = localPoints[index].x - localOrigin.x;
+        const localDy = localPoints[index].y - localOrigin.y;
+        const targetDx = targetPoints[index].x - targetOrigin.x;
+        const targetDy = targetPoints[index].y - targetOrigin.y;
+        if (Math.hypot(localDx, localDy) > 1e-6 && Math.hypot(targetDx, targetDy) > 1e-6) {
+          referenceIndex = index;
+          break;
+        }
+      }
+
+      if (referenceIndex < 0) {
+        return null;
+      }
+
+      const localVector = {
+        x: localPoints[referenceIndex].x - localOrigin.x,
+        y: localPoints[referenceIndex].y - localOrigin.y,
+      };
+      const targetVector = {
+        x: targetPoints[referenceIndex].x - targetOrigin.x,
+        y: targetPoints[referenceIndex].y - targetOrigin.y,
+      };
+      const yaw = Math.atan2(targetVector.y, targetVector.x)
+        - Math.atan2(localVector.y, localVector.x);
+      const cosYaw = Math.cos(yaw);
+      const sinYaw = Math.sin(yaw);
+
+      return point => {
+        const dx = point.x - targetOrigin.x;
+        const dy = point.y - targetOrigin.y;
+        return {
+          x: localOrigin.x + cosYaw * dx + sinYaw * dy,
+          y: localOrigin.y - sinYaw * dx + cosYaw * dy,
+        };
+      };
+    }
+
+    const targetToLocal = haveTargetPolygon
+      ? buildTargetToLocalTransform(inputPoints, task4PolygonPoints)
+      : null;
+
+    const polygonPoints = haveTargetPolygon && targetToLocal
+      ? task4PolygonPoints.map(targetToLocal)
+      : inputPoints;
+    const planPoints = havePlan && targetToLocal
+      ? task4PlanPoints.map(targetToLocal)
+      : [];
+    const robotPose = { x: 0.0, y: 0.0 };
+    const displayedPoints = polygonPoints.concat(planPoints, [robotPose]);
 
     if (displayedPoints.length === 0) {
       task4Polygon.setAttribute("points", "");
@@ -1070,23 +1128,19 @@
       y: robotSvg.y - point.x * scale,
     });
 
-    const svgPolygonPoints = polygonPoints.map(toSvg);
-    task4Polygon.setAttribute("points", pointsToSvgAttribute(svgPolygonPoints));
-
-    const svgPlanPoints = task4PlanPoints.map(toSvg);
-    task4PlanLine.setAttribute("points", pointsToSvgAttribute(svgPlanPoints));
+    task4Polygon.setAttribute("points", pointsToSvgAttribute(polygonPoints.map(toSvg)));
+    task4PlanLine.setAttribute("points", pointsToSvgAttribute(planPoints.map(toSvg)));
 
     if (havePlan) {
       const frameText = task4PlanFrame || "unbekanntem Frame";
-      const polygonText = haveTargetPolygon ? "Polygon empfangen" : "Polygon noch nicht empfangen";
-      task4PlanText.textContent = `${task4PlanPoints.length} Punkte in ${frameText}; ${polygonText}; Anzeige robotzentriert`;
+      const transformText = targetToLocal
+        ? "auf Roboterpose beim Planungsstart transformiert"
+        : "warte auf Polygon zur Frame-Transformation";
+      task4PlanText.textContent = `${task4PlanPoints.length} Punkte in ${frameText}; ${transformText}`;
     } else {
-      task4PlanText.textContent = "noch nicht empfangen; Eingabe relativ zu [0,0]";
+      task4PlanText.textContent = "noch nicht empfangen; Eingabe relativ zur aktuellen Roboterpose";
     }
 
-    // Kleines Koordinatensystem: fest unten rechts im karierten Plot-Hintergrund.
-    // Die Position liegt in ViewBox-/Pixelkoordinaten des Gitters und ist
-    // unabhängig von Polygon, Pfad, Roboterposition und Skalierung.
     const previewWidth = 320.0;
     const previewHeight = 180.0;
     const axisMargin = 18.0;
@@ -1106,10 +1160,7 @@
     task4AxisYLabel.setAttribute("y", (axisOrigin.y + 4.0).toFixed(1));
 
     const arrowLength = 46;
-    const arrowEnd = {
-      x: robotSvg.x,
-      y: robotSvg.y - arrowLength,
-    };
+    const arrowEnd = { x: robotSvg.x, y: robotSvg.y - arrowLength };
 
     task4StartPoint.setAttribute("cx", robotSvg.x.toFixed(1));
     task4StartPoint.setAttribute("cy", robotSvg.y.toFixed(1));
