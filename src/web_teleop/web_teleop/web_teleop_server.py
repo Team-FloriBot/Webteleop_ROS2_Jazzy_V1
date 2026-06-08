@@ -186,11 +186,11 @@ class WebTeleopNode(Node):
         )
         self._task4_set_polygon_client = self.create_client(
             SetParameters,
-            "/coverage_planner/set_parameters",
+            "/task4_brain/set_parameters",
         )
         self._task4_plan_client = self.create_client(
             Trigger,
-            "/trigger_coverage_planning",
+            "/task4/start",
         )
         self._task4_start_client = self.create_client(
             Trigger,
@@ -209,7 +209,7 @@ class WebTeleopNode(Node):
         )
         self._task4_polygon_subscription = self.create_subscription(
             Marker,
-            "/coverage_polygon_marker",
+            "/task4/coverage_polygon_marker",
             self._task4_polygon_callback,
             10,
         )
@@ -692,7 +692,7 @@ class WebTeleopNode(Node):
                     "type": "task4_result",
                     "command": "set_polygon",
                     "success": False,
-                    "message": "Parameter-Service '/coverage_planner/set_parameters' ist nicht erreichbar.",
+                    "message": "Parameter-Service '/task4_brain/set_parameters' ist nicht erreichbar.",
                 },
             )
             return
@@ -743,7 +743,7 @@ class WebTeleopNode(Node):
         self._trigger_task4_client(
             self._task4_plan_client,
             "plan",
-            "Task-4-Planungsservice '/trigger_coverage_planning' ist nicht erreichbar.",
+            "Task-4-Planungsservice '/task4/start' ist nicht erreichbar.",
             websocket,
         )
 
