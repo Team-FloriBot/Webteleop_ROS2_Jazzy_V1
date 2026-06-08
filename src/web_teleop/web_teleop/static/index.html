@@ -747,7 +747,7 @@
         <div class="task4-input-row">
           <textarea
             id="task4CornersInput"
-            placeholder="z. B. 0,0 5,0 5,5 0,5"
+            placeholder="z. B. [0.0, 0.0, 5.0, 0.0, 5.0, 5.0, 0.0, 5.0]"
             autocomplete="off"
             spellcheck="false"
           ></textarea>
@@ -758,6 +758,7 @@
           <button id="planTask4Button" class="task-button">Planen</button>
           <button id="startTask4Button" class="task-button primary">Start</button>
           <button id="stopTask4Button" class="task-button stop">Stop</button>
+          <button id="resetTask4Button" class="task-button stop">Reset</button>
         </div>
 
         <div class="task-visual">
@@ -884,6 +885,7 @@
   const planTask4Button = document.getElementById("planTask4Button");
   const startTask4Button = document.getElementById("startTask4Button");
   const stopTask4Button = document.getElementById("stopTask4Button");
+  const resetTask4Button = document.getElementById("resetTask4Button");
   const task4Polygon = document.getElementById("task4Polygon");
   const task4PlanLine = document.getElementById("task4PlanLine");
   const task4HeadingLine = document.getElementById("task4HeadingLine");
@@ -1212,6 +1214,7 @@
     startTask4Button.disabled = !tasksSourceActive || runningTask !== null;
 
     stopTask4Button.disabled = runningTask !== "task4";
+    resetTask4Button.disabled = runningTask !== null && runningTask !== "task4";
   }
 
   function updateNavigationStatus(message) {
@@ -1735,6 +1738,15 @@
     }
 
     sendTaskMessage({ type: "task4_command", command: "stop" });
+  });
+
+  resetTask4Button.addEventListener("click", () => {
+    if (!confirmTask4Action("Reset")) {
+      showFeedback(task4Feedback, "Task-4-Reset abgebrochen.", false);
+      return;
+    }
+
+    sendTaskMessage({ type: "task4_command", command: "reset" });
   });
 
   resetSlamMapButton.addEventListener("click", () => {
