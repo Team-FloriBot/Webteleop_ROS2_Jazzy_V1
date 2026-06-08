@@ -102,6 +102,7 @@ class WebTeleopNode(Node):
         self._latest_task4_plan: dict[str, Any] | None = None
         self._latest_task4_polygon: dict[str, Any] | None = None
         self._latest_task4_robot_pose: dict[str, Any] | None = None
+        self._available_models: list[str] = []
         self._task_navigation_config: dict[str, dict[str, str]] = {
             "task1": {"pattern": "", "carefulness": "high", "model_path": ""},
             "task2": {
@@ -219,6 +220,12 @@ class WebTeleopNode(Node):
             self._odom_callback,
             10,
         )
+        self._available_models_subscription = self.create_subscription(
+            String,
+            "/detector/available_models",
+            self._available_models_callback,
+            10,
+        )
 
         self._publish_timer = self.create_timer(
             0.05,
@@ -228,6 +235,31 @@ class WebTeleopNode(Node):
         self.get_logger().info(
             f"Webteleop publiziert Fahrbefehle mit 20 Hz auf '{self._cmd_vel_topic}'."
         )
+
+    def available_models_payload(self) -> dict[str, Any]:
+        return {
+            "type": "available_models",
+            "models": list(self._available_models),
+        }
+
+    def _available_models_callback(self, msg: String) -> None:
+        try:
+            models = json.loads(msg.data)
+            if not isinstance(models, list):
+                raise ValueError("available_models payload is not a list")
+
+            normalized: list[str] = []
+            seen: set[str] = set()
+            for model in models:
+                model_path = str(model).strip()
+                if model_path and model_path not in seen:
+                    normalized.append(model_path)
+                    seen.add(model_path)
+
+            self._available_models = normalized
+            self._schedule_broadcast(self.available_models_payload())
+        except Exception as exc:
+            self.get_logger().error(f"Failed to parse available models: {exc}")
 
     @property
     def active_source(self) -> str:
@@ -1241,6 +1273,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     node = ros_node
     if node is not None:
         await websocket.send_text(json.dumps(node.status_payload()))
+        await websocket.send_text(json.dumps(node.available_models_payload()))
         if node._latest_task4_polygon is not None:
             await websocket.send_text(json.dumps(node._latest_task4_polygon))
         if node._latest_task4_robot_pose is not None:
