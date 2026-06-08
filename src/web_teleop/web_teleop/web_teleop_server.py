@@ -191,7 +191,7 @@ class WebTeleopNode(Node):
         )
         self._task4_plan_client = self.create_client(
             Trigger,
-            "/task4/start",
+            "/task4/plan_coverage",
         )
         self._task4_start_client = self.create_client(
             Trigger,
@@ -200,6 +200,10 @@ class WebTeleopNode(Node):
         self._task4_stop_client = self.create_client(
             Trigger,
             "/task4/stop_navigation",
+        )
+        self._task4_reset_client = self.create_client(
+            Trigger,
+            "/task4/reset",
         )
 
         self._task4_plan_subscription = self.create_subscription(
@@ -775,7 +779,7 @@ class WebTeleopNode(Node):
         self._trigger_task4_client(
             self._task4_plan_client,
             "plan",
-            "Task-4-Planungsservice '/task4/start' ist nicht erreichbar.",
+            "Task-4-Planungsservice '/task4/plan_coverage' ist nicht erreichbar.",
             websocket,
         )
 
@@ -844,6 +848,7 @@ class WebTeleopNode(Node):
         clients = {
             "start": self._task4_start_client,
             "stop": self._task4_stop_client,
+            "reset": self._task4_reset_client,
         }
         client = clients.get(command)
         if client is None:
@@ -878,7 +883,11 @@ class WebTeleopNode(Node):
             "task4",
             client,
             command,
-            f"Task-4-Service '{command}' ist nicht erreichbar.",
+            {
+                "start": "Task-4-Service '/task4/start_navigation' ist nicht erreichbar.",
+                "stop": "Task-4-Service '/task4/stop_navigation' ist nicht erreichbar.",
+                "reset": "Task-4-Service '/task4/reset' ist nicht erreichbar.",
+            }[command],
             "task4_result",
             websocket,
         )
