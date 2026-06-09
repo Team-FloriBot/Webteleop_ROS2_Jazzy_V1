@@ -433,8 +433,22 @@ class WebTeleopNode(Node):
 
     @staticmethod
     def _normalize_carefulness(value: Any) -> str:
+        valid_profiles = {
+            "high",
+            "medium",
+            "low",
+            "high_laser",
+            "high_mix",
+            "high_map",
+            "medium_laser",
+            "medium_mix",
+            "medium_map",
+            "low_laser",
+            "low_mix",
+            "low_map",
+        }
         carefulness = str(value or "high").strip().lower()
-        return carefulness if carefulness in {"high", "medium", "low"} else "high"
+        return carefulness if carefulness in valid_profiles else "high"
 
     @staticmethod
     def _validate_pattern(pattern: str) -> tuple[bool, str]:
