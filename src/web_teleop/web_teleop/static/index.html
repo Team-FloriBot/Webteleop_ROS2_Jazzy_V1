@@ -806,6 +806,20 @@
         </div>
 
         <div>
+          <div class="title">PTU-Referenzfahrt</div>
+          <div class="muted">Referenzfahrt der Pan-Tilt-Unit auslösen. Währenddessen muss der Bewegungsbereich frei sein.</div>
+        </div>
+
+        <div class="task-status">
+          <div>PTU-Service: <strong>/ptu/reference</strong></div>
+          <div>Serieller Befehl: <strong>R\r</strong></div>
+        </div>
+
+        <div class="laser-grid">
+          <button id="referencePtuButton" class="task-button stop">PTU-Referenzfahrt starten</button>
+        </div>
+
+        <div>
           <div class="title">Laser Auswahl</div>
           <div class="muted">Laser-Mux-Service: <strong>/front_scan_mux/set_profile</strong></div>
         </div>
@@ -898,6 +912,7 @@
   const task4StartText = document.getElementById("task4StartText");
   const task4PlanText = document.getElementById("task4PlanText");
   const resetSlamMapButton = document.getElementById("resetSlamMapButton");
+  const referencePtuButton = document.getElementById("referencePtuButton");
   const developmentFeedback = document.getElementById("developmentFeedback");
   const scanProfileButtons = Array.from(document.querySelectorAll("[data-scan-profile]"));
   const activePattern = document.getElementById("activePattern");
@@ -1757,6 +1772,27 @@
     }
 
     sendTaskMessage({ type: "reset_slam_map" });
+  });
+
+  referencePtuButton.addEventListener("click", () => {
+    const confirmed = window.confirm(
+      "PTU-Referenzfahrt wirklich starten?\n\n" +
+      "Die PTU bewegt sich während der Referenzfahrt. " +
+      "Der vollständige Bewegungsbereich muss frei sein."
+    );
+
+    if (!confirmed) {
+      showFeedback(developmentFeedback, "PTU-Referenzfahrt abgebrochen.", false);
+      return;
+    }
+
+    referencePtuButton.disabled = true;
+    showFeedback(developmentFeedback, "PTU-Referenzfahrt wird ausgelöst …", true);
+    sendTaskMessage({ type: "reference_ptu" });
+
+    window.setTimeout(() => {
+      referencePtuButton.disabled = false;
+    }, 5000);
   });
 
   scanProfileButtons.forEach(button => {
