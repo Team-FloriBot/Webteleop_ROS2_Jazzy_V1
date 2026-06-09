@@ -178,7 +178,7 @@ class WebTeleopNode(Node):
         )
         self._front_scan_mux_client = self.create_client(
             SetScanProfile,
-            "/front_scan_mux/set_profile",
+            "/set_profile",
         )
         self._slam_reset_client = (
             self.create_client(SlamToolboxReset, "/slam_toolbox/reset")
@@ -722,7 +722,12 @@ class WebTeleopNode(Node):
 
     def set_front_scan_profile(self, profile: str, websocket: WebSocket) -> None:
         profile = str(profile or "").strip()
-        if profile not in {"rs_crop_scan", "rs_nonground_scan", "sick_front"}:
+        if profile not in {
+            "rs_crop_scan",
+            "rs_nonground_scan",
+            "sick_front",
+            "rs_nonground_scan_torsten",
+        }:
             self._schedule_send(websocket, {
                 "type": "development_result",
                 "command": "set_scan_profile",
@@ -735,7 +740,7 @@ class WebTeleopNode(Node):
                 "type": "development_result",
                 "command": "set_scan_profile",
                 "success": False,
-                "message": "Laser-Mux-Service '/front_scan_mux/set_profile' ist nicht erreichbar.",
+                "message": "Laser-Mux-Service '/set_profile' ist nicht erreichbar.",
             })
             return
 
