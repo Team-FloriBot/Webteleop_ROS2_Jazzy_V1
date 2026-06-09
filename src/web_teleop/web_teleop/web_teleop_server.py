@@ -108,12 +108,12 @@ class WebTeleopNode(Node):
             "task2": {
                 "pattern": "",
                 "carefulness": "high",
-                "model_path": "model/yolo26n_jutestripe_yellowpaper-seg.pt",
+                "model_path": "/models/yolo26n_jutestripe_yellowpaper-seg.pt",
             },
             "task3": {
                 "pattern": "",
                 "carefulness": "high",
-                "model_path": "model/yolo26n_bee_beetle_butterfly-seg.pt",
+                "model_path": "/models/yolo26n_bee_beetle_butterfly-seg.pt",
             },
         }
 
