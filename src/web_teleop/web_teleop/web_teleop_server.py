@@ -185,6 +185,10 @@ class WebTeleopNode(Node):
             if SlamToolboxReset is not None
             else None
         )
+        self._ptu_reference_client = self.create_client(
+            Trigger,
+            "/ptu/reference",
+        )
         self._task4_set_polygon_client = self.create_client(
             SetParameters,
             "/task4_brain/set_parameters",
@@ -656,6 +660,48 @@ class WebTeleopNode(Node):
                     "success": False,
                     "message": f"Serviceaufruf fehlgeschlagen: {exc}",
                 }
+            self._schedule_send(websocket, payload)
+
+        future.add_done_callback(finish)
+
+    def reference_ptu(self, websocket: WebSocket) -> None:
+        if not self._service_ready(self._ptu_reference_client):
+            self._schedule_send(
+                websocket,
+                {
+                    "type": "development_result",
+                    "command": "reference_ptu",
+                    "success": False,
+                    "message": (
+                        "PTU-Referenz-Service '/ptu/reference' "
+                        "ist nicht erreichbar."
+                    ),
+                },
+            )
+            return
+
+        future = self._ptu_reference_client.call_async(Trigger.Request())
+
+        def finish(done_future: Any) -> None:
+            try:
+                response = done_future.result()
+                payload = {
+                    "type": "development_result",
+                    "command": "reference_ptu",
+                    "success": bool(response.success),
+                    "message": response.message,
+                }
+            except Exception as exc:
+                payload = {
+                    "type": "development_result",
+                    "command": "reference_ptu",
+                    "success": False,
+                    "message": (
+                        "Aufruf der PTU-Referenzfahrt fehlgeschlagen: "
+                        f"{exc}"
+                    ),
+                }
+
             self._schedule_send(websocket, payload)
 
         future.add_done_callback(finish)
@@ -1338,6 +1384,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
             elif message_type == "reset_slam_map":
                 node.reset_slam_map(websocket)
+
+            elif message_type == "reference_ptu":
+                node.reference_ptu(websocket)
 
             elif message_type == "set_front_scan_profile":
                 node.set_front_scan_profile(
