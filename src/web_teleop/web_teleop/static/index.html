@@ -621,7 +621,7 @@
       <div class="card">
         <div>
           <div class="title">Task 1 Navigation</div>
-          <div class="muted">Startablauf: In der cmd_vel-Weiche „Tasks“ auswählen, Pattern eingeben, Carefulness wählen, „Pattern übernehmen“ drücken und danach „Start“. Carefulness: high = vorsichtig, medium = ausgewogen, low = dynamisch.</div>
+          <div class="muted">Startablauf: In der cmd_vel-Weiche „Tasks“ auswählen, Pattern eingeben, Carefulness wählen, „Pattern übernehmen“ drücken und danach „Start“. Carefulness kombiniert Fahrdynamik (high, medium, low) und Zielgewichtung (map, mix, laser), z. B. medium_mix.</div>
         </div>
 
         <div class="task-form">
@@ -637,9 +637,21 @@
           </label>
           <div class="pattern-actions">
             <select id="task1CarefulnessInput" class="task-button" aria-label="Task 1 Carefulness">
-              <option value="high">high</option>
-              <option value="medium">medium</option>
-              <option value="low">low</option>
+              <optgroup label="Vorsichtig (high)">
+                <option value="high_map">high_map</option>
+                <option value="high_mix">high_mix</option>
+                <option value="high_laser">high_laser</option>
+              </optgroup>
+              <optgroup label="Ausgewogen (medium)">
+                <option value="medium_map">medium_map</option>
+                <option value="medium_mix">medium_mix</option>
+                <option value="medium_laser">medium_laser</option>
+              </optgroup>
+              <optgroup label="Dynamisch (low)">
+                <option value="low_map">low_map</option>
+                <option value="low_mix">low_mix</option>
+                <option value="low_laser">low_laser</option>
+              </optgroup>
             </select>
             <button id="configureTask1Button" class="task-button">Pattern übernehmen</button>
             <button id="resetTaskButton" class="task-button stop">Reset</button>
@@ -661,7 +673,7 @@
       <div class="card">
         <div>
           <div class="title">Task 2 Plant Health Detection</div>
-          <div class="muted">Startablauf: In der cmd_vel-Weiche „Tasks“ auswählen, Pattern eingeben, model_path prüfen, Carefulness wählen, „Pattern übernehmen“ drücken und danach „Start“. Carefulness: high = vorsichtig, medium = ausgewogen, low = dynamisch.</div>
+          <div class="muted">Startablauf: In der cmd_vel-Weiche „Tasks“ auswählen, Pattern eingeben, model_path prüfen, Carefulness wählen, „Pattern übernehmen“ drücken und danach „Start“. Carefulness kombiniert Fahrdynamik (high, medium, low) und Zielgewichtung (map, mix, laser), z. B. medium_mix.</div>
         </div>
 
         <div class="task-form">
@@ -677,9 +689,21 @@
           </label>
           <div class="pattern-actions">
             <select id="task2CarefulnessInput" class="task-button" aria-label="Task 2 Carefulness">
-              <option value="high">high</option>
-              <option value="medium">medium</option>
-              <option value="low">low</option>
+              <optgroup label="Vorsichtig (high)">
+                <option value="high_map">high_map</option>
+                <option value="high_mix">high_mix</option>
+                <option value="high_laser">high_laser</option>
+              </optgroup>
+              <optgroup label="Ausgewogen (medium)">
+                <option value="medium_map">medium_map</option>
+                <option value="medium_mix">medium_mix</option>
+                <option value="medium_laser">medium_laser</option>
+              </optgroup>
+              <optgroup label="Dynamisch (low)">
+                <option value="low_map">low_map</option>
+                <option value="low_mix">low_mix</option>
+                <option value="low_laser">low_laser</option>
+              </optgroup>
             </select>
             <button id="configureTask2Button" class="task-button">Pattern übernehmen</button>
             <button id="resetTask2Button" class="task-button stop">Reset</button>
@@ -701,7 +725,7 @@
       <div class="card">
         <div>
           <div class="title">Task 3 Biodiversity Monitoring</div>
-          <div class="muted">Startablauf: In der cmd_vel-Weiche „Tasks“ auswählen, Pattern eingeben, model_path prüfen, Carefulness wählen, „Pattern übernehmen“ drücken und danach „Start“. Carefulness: high = vorsichtig, medium = ausgewogen, low = dynamisch.</div>
+          <div class="muted">Startablauf: In der cmd_vel-Weiche „Tasks“ auswählen, Pattern eingeben, model_path prüfen, Carefulness wählen, „Pattern übernehmen“ drücken und danach „Start“. Carefulness kombiniert Fahrdynamik (high, medium, low) und Zielgewichtung (map, mix, laser), z. B. medium_mix.</div>
         </div>
 
         <div class="task-form">
@@ -717,9 +741,21 @@
           </label>
           <div class="pattern-actions">
             <select id="task3CarefulnessInput" class="task-button" aria-label="Task 3 Carefulness">
-              <option value="high">high</option>
-              <option value="medium">medium</option>
-              <option value="low">low</option>
+              <optgroup label="Vorsichtig (high)">
+                <option value="high_map">high_map</option>
+                <option value="high_mix">high_mix</option>
+                <option value="high_laser">high_laser</option>
+              </optgroup>
+              <optgroup label="Ausgewogen (medium)">
+                <option value="medium_map">medium_map</option>
+                <option value="medium_mix">medium_mix</option>
+                <option value="medium_laser">medium_laser</option>
+              </optgroup>
+              <optgroup label="Dynamisch (low)">
+                <option value="low_map">low_map</option>
+                <option value="low_mix">low_mix</option>
+                <option value="low_laser">low_laser</option>
+              </optgroup>
             </select>
             <button id="configureTask3Button" class="task-button">Pattern übernehmen</button>
             <button id="resetTask3Button" class="task-button stop">Reset</button>
