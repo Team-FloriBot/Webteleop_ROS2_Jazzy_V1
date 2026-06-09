@@ -684,7 +684,7 @@
           <label for="task2ModelPathInput">
             <span>model_path:</span>
             <select id="task2ModelPathInput" aria-label="Task 2 KI-Modell">
-              <option value="model/yolo26n_jutestripe_yellowpaper-seg.pt">model/yolo26n_jutestripe_yellowpaper-seg.pt</option>
+              <option value="/models/yolo26n_jutestripe_yellowpaper-seg.pt">/models/yolo26n_jutestripe_yellowpaper-seg.pt</option>
             </select>
           </label>
           <div class="pattern-actions">
@@ -736,7 +736,7 @@
           <label for="task3ModelPathInput">
             <span>model_path:</span>
             <select id="task3ModelPathInput" aria-label="Task 3 KI-Modell">
-              <option value="model/yolo26n_bee_beetle_butterfly-seg.pt">model/yolo26n_bee_beetle_butterfly-seg.pt</option>
+              <option value="/models/yolo26n_bee_beetle_butterfly-seg.pt">/models/yolo26n_bee_beetle_butterfly-seg.pt</option>
             </select>
           </label>
           <div class="pattern-actions">
@@ -926,8 +926,8 @@
   const stopTask3Button = document.getElementById("stopTask3Button");
   const resetTask3Button = document.getElementById("resetTask3Button");
   const task2Feedback = document.getElementById("task2Feedback");
-  const defaultTask2Model = "model/yolo26n_jutestripe_yellowpaper-seg.pt";
-  const defaultTask3Model = "model/yolo26n_bee_beetle_butterfly-seg.pt";
+  const defaultTask2Model = "/models/yolo26n_jutestripe_yellowpaper-seg.pt";
+  const defaultTask3Model = "/models/yolo26n_bee_beetle_butterfly-seg.pt";
   const task3Feedback = document.getElementById("task3Feedback");
   const task4Feedback = document.getElementById("task4Feedback");
   const task4CornersInput = document.getElementById("task4CornersInput");
