@@ -1,1 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
 
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>FloriBot Jury Dashboard</title>
+
+    <style>
+        :root {
+            color-scheme: dark;
+
+            --background: #0f1419;
+            --surface: #192129;
+            --surface-light: #252f38;
+            --border: #3b4853;
+            --text: #f3f4f6;
+            --muted: #aeb8c1;
+
+            --green-background: #14532d;
+            --green-border: #4ade80;
+
+            --red-background: #7f1d1d;
+            --red-border: #f87171;
+
+            --yellow-background: #713f12;
+            --yellow-border: #fde047;
+
+            --orange-background: #7c2d12;
+            --orange-border: #fb923c;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+        }
+
+        body {
+            min-height: 100vh;
+            background: var(--background);
+            color: var(--text);
+            font-family:
+                Inter,
+                Arial,
+                Helvetica,
+                sans-serif;
+        }
+
+        button,
+        select {
+            font: inherit;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+
+            min-height: 76px;
+            padding: 0.8rem 1.25rem;
+
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-title {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .header-title h1 {
+            margin: 0;
+            font-size: clamp(1.25rem, 2.5vw, 2rem);
+        }
+
+        .header-title span {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .task-selector {
+            min-width: 160px;
+            padding: 0.55rem 0.75rem;
+
+            color: var(--text);
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            border-radius: 0.55rem;
+        }
+
+        .connection-status {
+            min-width: 134px;
+            padding: 0.55rem 0.8rem;
+
+            text-align: center;
+            font-size: 0.85rem;
+            font-weight: 700;
+
+            background: var(--red-background);
+            border: 1px solid var(--red-border);
+            border-radius: 999px;
+        }
+
+        .connection-status.connected {
+            background: var(--green-background);
+            border-color: var(--green-border);
+        }
+
+        .fullscreen-button {
+            padding: 0.55rem 0.8rem;
+
+            color: var(--text);
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            border-radius: 0.55rem;
+
+            cursor: pointer;
+        }
+
+        .fullscreen-button:hover {
+            filter: brightness(1.15);
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns:
+                minmax(0, 2fr)
+                minmax(300px, 0.8fr);
+            gap: 1rem;
+
+            min-height: calc(100vh - 76px);
+            padding: 1rem;
+        }
+
+        .main-panel {
+            position: relative;
+
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+
+            min-height: 620px;
+            padding: 2rem;
+
+            text-align: center;
+
+            background: var(--surface);
+            border: 4px solid var(--border);
+            border-radius: 1.2rem;
+
+            overflow: hidden;
+
+            transition:
+                background-color 160ms ease,
+                border-color 160ms ease,
+                transform 160ms ease;
+        }
+
+        .main-panel.signal-green {
+            background: var(--green-background);
+            border-color: var(--green-border);
+        }
+
+        .main-panel.signal-red {
+            background: var(--red-background);
+            border-color: var(--red-border);
+        }
+
+        .main-panel.signal-yellow {
+            background: var(--yellow-background);
+            border-color: var(--yellow-border);
+        }
+
+        .main-panel.signal-orange {
+            background: var(--orange-background);
+            border-color: var(--orange-border);
+        }
+
+        .main-panel.flash {
+            animation: detection-flash 500ms ease-in-out 3;
+        }
+
+        @keyframes detection-flash {
+            0% {
+                filter: brightness(1);
+                transform: scale(1);
+            }
+
+            50% {
+                filter: brightness(1.5);
+                transform: scale(1.006);
+            }
+
+            100% {
+                filter: brightness(1);
+                transform: scale(1);
+            }
+        }
+
+        .task-label {
+            margin-bottom: 1.25rem;
+
+            color: var(--muted);
+            font-size: clamp(1.2rem, 2.5vw, 2.2rem);
+            font-weight: 700;
+            letter-spacing: 0.08em;
+        }
+
+        .main-panel[class*="signal-"] .task-label {
+            color: var(--text);
+        }
+
+        .classification-title {
+            margin: 0;
+
+            font-size: clamp(3rem, 9vw, 8.5rem);
+            line-height: 0.95;
+            letter-spacing: 0.015em;
+            word-break: break-word;
+        }
+
+        .classification-subtitle {
+            margin-top: 1.25rem;
+
+            font-size: clamp(1.25rem, 3.2vw, 3rem);
+            font-weight: 600;
+        }
+
+        .event-details {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+
+            margin-top: 2rem;
+        }
+
+        .detail-item {
+            min-width: 130px;
+            padding: 0.7rem 1rem;
+
+            background: rgba(0, 0, 0, 0.24);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 0.7rem;
+
+            font-size: clamp(1rem, 1.7vw, 1.5rem);
+            font-weight: 600;
+        }
+
+        .event-time {
+            position: absolute;
+            right: 1rem;
+            bottom: 1rem;
+
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+
+            min-width: 0;
+        }
+
+        .information-card,
+        .history-card {
+            padding: 1rem;
+
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+        }
+
+        .information-card h2,
+        .history-card h2 {
+            margin: 0 0 0.85rem;
+            font-size: 1.2rem;
+        }
+
+        .statistics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.65rem;
+        }
+
+        .statistic {
+            padding: 0.75rem;
+
+            background: var(--surface-light);
+            border-radius: 0.65rem;
+        }
+
+        .statistic-label {
+            display: block;
+
+            margin-bottom: 0.25rem;
+
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+
+        .statistic-value {
+            font-size: 1.35rem;
+            font-weight: 700;
+        }
+
+        .history-card {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+
+            min-height: 0;
+        }
+
+        .history-list {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+            gap: 0.55rem;
+
+            max-height: calc(100vh - 330px);
+            padding-right: 0.2rem;
+
+            overflow-y: auto;
+        }
+
+        .history-empty {
+            padding: 1rem;
+
+            color: var(--muted);
+            text-align: center;
+
+            border: 1px dashed var(--border);
+            border-radius: 0.7rem;
+        }
+
+        .history-event {
+            padding: 0.75rem;
+
+            background: var(--surface-light);
+            border-left: 5px solid var(--border);
+            border-radius: 0.65rem;
+        }
+
+        .history-event.green {
+            border-left-color: var(--green-border);
+        }
+
+        .history-event.red {
+            border-left-color: var(--red-border);
+        }
+
+        .history-event.yellow {
+            border-left-color: var(--yellow-border);
+        }
+
+        .history-event.orange {
+            border-left-color: var(--orange-border);
+        }
+
+        .history-event-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.75rem;
+        }
+
+        .history-event-title {
+            font-weight: 700;
+        }
+
+        .history-event-number {
+            color: var(--muted);
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+
+        .history-event-details {
+            margin-top: 0.35rem;
+
+            color: var(--muted);
+            font-size: 0.86rem;
+            line-height: 1.4;
+        }
+
+        .footer-note {
+            color: var(--muted);
+            font-size: 0.76rem;
+            line-height: 1.45;
+        }
+
+        @media (max-width: 980px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+
+            .main-panel {
+                min-height: 58vh;
+            }
+
+            .history-list {
+                max-height: 360px;
+            }
+        }
+
+        @media (max-width: 620px) {
+            .header {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .header-controls {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .layout {
+                padding: 0.65rem;
+            }
+
+            .main-panel {
+                min-height: 55vh;
+                padding: 1.25rem;
+            }
+
+            .event-details {
+                width: 100%;
+            }
+
+            .detail-item {
+                flex: 1;
+                min-width: 110px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <div class="header-title">
+            <h1>FloriBot 4.0 – Jury Dashboard</h1>
+            <span>FRE 2026 · Task 2 and Task 3</span>
+        </div>
+
+        <div class="header-controls">
+            <select
+                id="task-selector"
+                class="task-selector"
+                aria-label="Displayed task"
+            >
+                <option value="all">Task 2 + Task 3</option>
+                <option value="2">Task 2</option>
+                <option value="3">Task 3</option>
+            </select>
+
+            <div
+                id="connection-status"
+                class="connection-status"
+            >
+                DISCONNECTED
+            </div>
+
+            <button
+                id="fullscreen-button"
+                class="fullscreen-button"
+                type="button"
+            >
+                Fullscreen
+            </button>
+        </div>
+    </header>
+
+    <main class="layout">
+        <section
+            id="main-panel"
+            class="main-panel"
+            aria-live="assertive"
+        >
+            <div id="task-label" class="task-label">
+                WAITING FOR DETECTION
+            </div>
+
+            <h2
+                id="classification-title"
+                class="classification-title"
+            >
+                READY
+            </h2>
+
+            <div
+                id="classification-subtitle"
+                class="classification-subtitle"
+            >
+                Task 2 / Task 3 classification display
+            </div>
+
+            <div id="event-details" class="event-details">
+            </div>
+
+            <div id="event-time" class="event-time">
+                No event received
+            </div>
+        </section>
+
+        <aside class="side-panel">
+            <section class="information-card">
+                <h2>Session</h2>
+
+                <div class="statistics-grid">
+                    <div class="statistic">
+                        <span class="statistic-label">
+                            Total detections
+                        </span>
+
+                        <span
+                            id="total-count"
+                            class="statistic-value"
+                        >
+                            0
+                        </span>
+                    </div>
+
+                    <div class="statistic">
+                        <span class="statistic-label">
+                            Diseased plants
+                        </span>
+
+                        <span
+                            id="diseased-count"
+                            class="statistic-value"
+                        >
+                            0
+                        </span>
+                    </div>
+
+                    <div class="statistic">
+                        <span class="statistic-label">
+                            Bees
+                        </span>
+
+                        <span
+                            id="bee-count"
+                            class="statistic-value"
+                        >
+                            0
+                        </span>
+                    </div>
+
+                    <div class="statistic">
+                        <span class="statistic-label">
+                            Pests
+                        </span>
+
+                        <span
+                            id="pest-count"
+                            class="statistic-value"
+                        >
+                            0
+                        </span>
+                    </div>
+
+                    <div class="statistic">
+                        <span class="statistic-label">
+                            Butterflies
+                        </span>
+
+                        <span
+                            id="butterfly-count"
+                            class="statistic-value"
+                        >
+                            0
+                        </span>
+                    </div>
+
+                    <div class="statistic">
+                        <span class="statistic-label">
+                            Last event
+                        </span>
+
+                        <span
+                            id="last-event-time"
+                            class="statistic-value"
+                        >
+                            —
+                        </span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="history-card">
+                <h2>Detection history</h2>
+
+                <div id="history-list" class="history-list">
+                    <div
+                        id="history-empty"
+                        class="history-empty"
+                    >
+                        No detections received.
+                    </div>
+                </div>
+            </section>
+
+            <div class="footer-note">
+                This page is read-only. It does not publish velocity,
+                navigation, start, stop or configuration commands.
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        "use strict";
+
+        const connectionStatusElement =
+            document.getElementById("connection-status");
+
+        const taskSelectorElement =
+            document.getElementById("task-selector");
+
+        const fullscreenButtonElement =
+            document.getElementById("fullscreen-button");
+
+        const mainPanelElement =
+            document.getElementById("main-panel");
+
+        const taskLabelElement =
+            document.getElementById("task-label");
+
+        const classificationTitleElement =
+            document.getElementById("classification-title");
+
+        const classificationSubtitleElement =
+            document.getElementById("classification-subtitle");
+
+        const eventDetailsElement =
+            document.getElementById("event-details");
+
+        const eventTimeElement =
+            document.getElementById("event-time");
+
+        const historyListElement =
+            document.getElementById("history-list");
+
+        const totalCountElement =
+            document.getElementById("total-count");
+
+        const diseasedCountElement =
+            document.getElementById("diseased-count");
+
+        const beeCountElement =
+            document.getElementById("bee-count");
+
+        const pestCountElement =
+            document.getElementById("pest-count");
+
+        const butterflyCountElement =
+            document.getElementById("butterfly-count");
+
+        const lastEventTimeElement =
+            document.getElementById("last-event-time");
+
+        const events = [];
+
+        let socket = null;
+        let reconnectTimeout = null;
+        let signalResetTimeout = null;
+
+        function determineInitialTaskFilter() {
+            const path = window.location.pathname.toLowerCase();
+
+            if (path === "/task2") {
+                return "2";
+            }
+
+            if (path === "/task3") {
+                return "3";
+            }
+
+            return "all";
+        }
+
+        taskSelectorElement.value =
+            determineInitialTaskFilter();
+
+        function eventMatchesTaskFilter(event) {
+            const selectedTask = taskSelectorElement.value;
+
+            if (selectedTask === "all") {
+                return true;
+            }
+
+            return String(event.task) === selectedTask;
+        }
+
+        function formatTime(timestamp) {
+            if (!timestamp) {
+                return "—";
+            }
+
+            const date = new Date(timestamp);
+
+            if (Number.isNaN(date.getTime())) {
+                return "—";
+            }
+
+            return date.toLocaleTimeString(
+                undefined,
+                {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                }
+            );
+        }
+
+        function formatDateTime(timestamp) {
+            if (!timestamp) {
+                return "—";
+            }
+
+            const date = new Date(timestamp);
+
+            if (Number.isNaN(date.getTime())) {
+                return "—";
+            }
+
+            return date.toLocaleString();
+        }
+
+        function capitalize(text) {
+            if (!text) {
+                return "";
+            }
+
+            return (
+                text.charAt(0).toUpperCase()
+                + text.slice(1)
+            );
+        }
+
+        function createDetailItem(label, value) {
+            const element =
+                document.createElement("div");
+
+            element.className = "detail-item";
+            element.textContent = `${label}: ${value}`;
+
+            return element;
+        }
+
+        function displayEvent(event, flash = true) {
+            if (!eventMatchesTaskFilter(event)) {
+                return;
+            }
+
+            if (signalResetTimeout !== null) {
+                window.clearTimeout(signalResetTimeout);
+            }
+
+            mainPanelElement.className =
+                `main-panel signal-${event.signal}`;
+
+            if (flash) {
+                void mainPanelElement.offsetWidth;
+                mainPanelElement.classList.add("flash");
+            }
+
+            taskLabelElement.textContent =
+                `TASK ${event.task}`;
+
+            classificationTitleElement.textContent =
+                event.title;
+
+            classificationSubtitleElement.textContent =
+                event.subtitle;
+
+            eventDetailsElement.replaceChildren();
+
+            if (event.side) {
+                eventDetailsElement.appendChild(
+                    createDetailItem(
+                        "Side",
+                        capitalize(event.side)
+                    )
+                );
+            }
+
+            if (
+                event.row !== null
+                && event.row !== undefined
+            ) {
+                eventDetailsElement.appendChild(
+                    createDetailItem(
+                        "Row",
+                        String(event.row)
+                    )
+                );
+            }
+
+            if (
+                event.distance_m !== null
+                && event.distance_m !== undefined
+            ) {
+                const distance =
+                    Number(event.distance_m).toFixed(1);
+
+                eventDetailsElement.appendChild(
+                    createDetailItem(
+                        "Distance",
+                        `${distance} m`
+                    )
+                );
+            }
+
+            if (
+                event.station_id !== null
+                && event.station_id !== undefined
+            ) {
+                eventDetailsElement.appendChild(
+                    createDetailItem(
+                        "Station",
+                        String(event.station_id)
+                    )
+                );
+            }
+
+            if (
+                event.confidence !== null
+                && event.confidence !== undefined
+            ) {
+                eventDetailsElement.appendChild(
+                    createDetailItem(
+                        "Confidence",
+                        Number(event.confidence).toFixed(2)
+                    )
+                );
+            }
+
+            eventTimeElement.textContent =
+                `Received: ${formatDateTime(event.timestamp)}`;
+
+            signalResetTimeout = window.setTimeout(
+                () => {
+                    mainPanelElement.classList.remove("flash");
+                },
+                2200
+            );
+        }
+
+        function createHistoryElement(event) {
+            const container =
+                document.createElement("article");
+
+            container.className =
+                `history-event ${event.signal}`;
+
+            const header =
+                document.createElement("div");
+
+            header.className = "history-event-header";
+
+            const title =
+                document.createElement("div");
+
+            title.className = "history-event-title";
+            title.textContent =
+                `Task ${event.task} · ${event.title}`;
+
+            const eventNumber =
+                document.createElement("div");
+
+            eventNumber.className = "history-event-number";
+            eventNumber.textContent =
+                `#${event.event_number}`;
+
+            header.appendChild(title);
+            header.appendChild(eventNumber);
+
+            const details =
+                document.createElement("div");
+
+            details.className = "history-event-details";
+
+            const detailValues = [
+                formatTime(event.timestamp),
+            ];
+
+            if (event.side) {
+                detailValues.push(
+                    `Side: ${capitalize(event.side)}`
+                );
+            }
+
+            if (
+                event.row !== null
+                && event.row !== undefined
+            ) {
+                detailValues.push(`Row: ${event.row}`);
+            }
+
+            if (
+                event.distance_m !== null
+                && event.distance_m !== undefined
+            ) {
+                detailValues.push(
+                    `Distance: ${
+                        Number(event.distance_m).toFixed(1)
+                    } m`
+                );
+            }
+
+            if (
+                event.station_id !== null
+                && event.station_id !== undefined
+            ) {
+                detailValues.push(
+                    `Station: ${event.station_id}`
+                );
+            }
+
+            details.textContent = detailValues.join(" · ");
+
+            container.appendChild(header);
+            container.appendChild(details);
+
+            return container;
+        }
+
+        function updateStatistics() {
+            totalCountElement.textContent =
+                String(events.length);
+
+            diseasedCountElement.textContent =
+                String(
+                    events.filter(
+                        (event) => event.label === "diseased"
+                    ).length
+                );
+
+            beeCountElement.textContent =
+                String(
+                    events.filter(
+                        (event) => event.label === "bee"
+                    ).length
+                );
+
+            pestCountElement.textContent =
+                String(
+                    events.filter(
+                        (event) => event.label === "pest"
+                    ).length
+                );
+
+            butterflyCountElement.textContent =
+                String(
+                    events.filter(
+                        (event) => event.label === "butterfly"
+                    ).length
+                );
+
+            lastEventTimeElement.textContent =
+                events.length > 0
+                    ? formatTime(events[0].timestamp)
+                    : "—";
+        }
+
+        function renderHistory() {
+            historyListElement.replaceChildren();
+
+            const filteredEvents =
+                events.filter(eventMatchesTaskFilter);
+
+            if (filteredEvents.length === 0) {
+                const emptyElement =
+                    document.createElement("div");
+
+                emptyElement.className = "history-empty";
+                emptyElement.textContent =
+                    "No detections received for this task.";
+
+                historyListElement.appendChild(emptyElement);
+                return;
+            }
+
+            for (const event of filteredEvents) {
+                historyListElement.appendChild(
+                    createHistoryElement(event)
+                );
+            }
+        }
+
+        function renderSelectedTask() {
+            renderHistory();
+            updateStatistics();
+
+            const newestMatchingEvent =
+                events.find(eventMatchesTaskFilter);
+
+            if (newestMatchingEvent) {
+                displayEvent(newestMatchingEvent, false);
+                return;
+            }
+
+            mainPanelElement.className = "main-panel";
+
+            const selectedTask = taskSelectorElement.value;
+
+            taskLabelElement.textContent =
+                selectedTask === "all"
+                    ? "WAITING FOR DETECTION"
+                    : `TASK ${selectedTask}`;
+
+            classificationTitleElement.textContent =
+                "READY";
+
+            classificationSubtitleElement.textContent =
+                selectedTask === "2"
+                    ? "Waiting for plant health detection"
+                    : selectedTask === "3"
+                        ? "Waiting for insect classification"
+                        : "Task 2 / Task 3 classification display";
+
+            eventDetailsElement.replaceChildren();
+            eventTimeElement.textContent =
+                "No matching event received";
+        }
+
+        function replaceInitialEvents(initialEvents) {
+            events.length = 0;
+
+            for (const event of initialEvents) {
+                events.push(event);
+            }
+
+            renderSelectedTask();
+        }
+
+        function addEvent(event) {
+            events.unshift(event);
+
+            if (events.length > 100) {
+                events.length = 100;
+            }
+
+            renderHistory();
+            updateStatistics();
+            displayEvent(event, true);
+        }
+
+        function updateConnectionState(connected) {
+            if (connected) {
+                connectionStatusElement.textContent =
+                    "CONNECTED";
+
+                connectionStatusElement.classList.add(
+                    "connected"
+                );
+            } else {
+                connectionStatusElement.textContent =
+                    "DISCONNECTED";
+
+                connectionStatusElement.classList.remove(
+                    "connected"
+                );
+            }
+        }
+
+        function scheduleReconnect() {
+            if (reconnectTimeout !== null) {
+                window.clearTimeout(reconnectTimeout);
+            }
+
+            reconnectTimeout = window.setTimeout(
+                connectWebSocket,
+                1500
+            );
+        }
+
+        function connectWebSocket() {
+            const websocketProtocol =
+                window.location.protocol === "https:"
+                    ? "wss"
+                    : "ws";
+
+            const websocketUrl =
+                `${websocketProtocol}://`
+                + `${window.location.host}/ws`;
+
+            socket = new WebSocket(websocketUrl);
+
+            socket.addEventListener(
+                "open",
+                () => {
+                    updateConnectionState(true);
+                }
+            );
+
+            socket.addEventListener(
+                "message",
+                (messageEvent) => {
+                    let message;
+
+                    try {
+                        message = JSON.parse(
+                            messageEvent.data
+                        );
+                    } catch (error) {
+                        console.error(
+                            "Invalid WebSocket message:",
+                            error
+                        );
+                        return;
+                    }
+
+                    if (
+                        message.type === "initial_state"
+                        && Array.isArray(message.events)
+                    ) {
+                        replaceInitialEvents(message.events);
+                        return;
+                    }
+
+                    if (
+                        message.type === "classification"
+                        && message.event
+                    ) {
+                        addEvent(message.event);
+                    }
+                }
+            );
+
+            socket.addEventListener(
+                "close",
+                () => {
+                    updateConnectionState(false);
+                    scheduleReconnect();
+                }
+            );
+
+            socket.addEventListener(
+                "error",
+                () => {
+                    socket.close();
+                }
+            );
+        }
+
+        taskSelectorElement.addEventListener(
+            "change",
+            renderSelectedTask
+        );
+
+        fullscreenButtonElement.addEventListener(
+            "click",
+            async () => {
+                try {
+                    if (!document.fullscreenElement) {
+                        await document.documentElement
+                            .requestFullscreen();
+                    } else {
+                        await document.exitFullscreen();
+                    }
+                } catch (error) {
+                    console.error(
+                        "Fullscreen request failed:",
+                        error
+                    );
+                }
+            }
+        );
+
+        document.addEventListener(
+            "fullscreenchange",
+            () => {
+                fullscreenButtonElement.textContent =
+                    document.fullscreenElement
+                        ? "Exit fullscreen"
+                        : "Fullscreen";
+            }
+        );
+
+        updateConnectionState(false);
+        renderSelectedTask();
+        connectWebSocket();
+    </script>
+</body>
+</html>
