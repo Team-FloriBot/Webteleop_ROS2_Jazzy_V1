@@ -437,6 +437,10 @@
                 justify-content: flex-start;
             }
 
+            .fullscreen-button {
+                display: none;
+            }
+
             .layout {
                 padding: 0.65rem;
             }
@@ -471,7 +475,6 @@
                 class="task-selector"
                 aria-label="Displayed task"
             >
-                <option value="all">Task 2 + Task 3</option>
                 <option value="2">Task 2</option>
                 <option value="3">Task 3</option>
             </select>
@@ -500,7 +503,7 @@
             aria-live="assertive"
         >
             <div id="task-label" class="task-label">
-                WAITING FOR DETECTION
+                TASK 2
             </div>
 
             <h2
@@ -514,7 +517,7 @@
                 id="classification-subtitle"
                 class="classification-subtitle"
             >
-                Task 2 / Task 3 classification display
+                Waiting for plant health detection
             </div>
 
             <div id="event-details" class="event-details">
@@ -690,28 +693,18 @@
         function determineInitialTaskFilter() {
             const path = window.location.pathname.toLowerCase();
 
-            if (path === "/task2") {
-                return "2";
-            }
-
             if (path === "/task3") {
                 return "3";
             }
 
-            return "all";
+            return "2";
         }
 
         taskSelectorElement.value =
             determineInitialTaskFilter();
 
         function eventMatchesTaskFilter(event) {
-            const selectedTask = taskSelectorElement.value;
-
-            if (selectedTask === "all") {
-                return true;
-            }
-
-            return String(event.task) === selectedTask;
+            return String(event.task) === taskSelectorElement.value;
         }
 
         function formatTime(timestamp) {
@@ -949,40 +942,43 @@
         }
 
         function updateStatistics() {
+            const filteredEvents =
+                events.filter(eventMatchesTaskFilter);
+
             totalCountElement.textContent =
-                String(events.length);
+                String(filteredEvents.length);
 
             diseasedCountElement.textContent =
                 String(
-                    events.filter(
+                    filteredEvents.filter(
                         (event) => event.label === "diseased"
                     ).length
                 );
 
             beeCountElement.textContent =
                 String(
-                    events.filter(
+                    filteredEvents.filter(
                         (event) => event.label === "bee"
                     ).length
                 );
 
             pestCountElement.textContent =
                 String(
-                    events.filter(
+                    filteredEvents.filter(
                         (event) => event.label === "pest"
                     ).length
                 );
 
             butterflyCountElement.textContent =
                 String(
-                    events.filter(
+                    filteredEvents.filter(
                         (event) => event.label === "butterfly"
                     ).length
                 );
 
             lastEventTimeElement.textContent =
-                events.length > 0
-                    ? formatTime(events[0].timestamp)
+                filteredEvents.length > 0
+                    ? formatTime(filteredEvents[0].timestamp)
                     : "—";
         }
 
@@ -1028,9 +1024,7 @@
             const selectedTask = taskSelectorElement.value;
 
             taskLabelElement.textContent =
-                selectedTask === "all"
-                    ? "WAITING FOR DETECTION"
-                    : `TASK ${selectedTask}`;
+                `TASK ${selectedTask}`;
 
             classificationTitleElement.textContent =
                 "READY";
@@ -1038,9 +1032,7 @@
             classificationSubtitleElement.textContent =
                 selectedTask === "2"
                     ? "Waiting for plant health detection"
-                    : selectedTask === "3"
-                        ? "Waiting for insect classification"
-                        : "Task 2 / Task 3 classification display";
+                    : "Waiting for insect classification";
 
             eventDetailsElement.replaceChildren();
             eventTimeElement.textContent =
@@ -1169,7 +1161,23 @@
 
         taskSelectorElement.addEventListener(
             "change",
-            renderSelectedTask
+            () => {
+                const selectedTask =
+                    taskSelectorElement.value;
+
+                const targetPath =
+                    selectedTask === "3"
+                        ? "/task3"
+                        : "/task2";
+
+                window.history.replaceState(
+                    null,
+                    "",
+                    targetPath
+                );
+
+                renderSelectedTask();
+            }
         );
 
         fullscreenButtonElement.addEventListener(
