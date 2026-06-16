@@ -1095,6 +1095,7 @@ class WebTeleopNode(Node):
         request.pattern = pattern
         request.carefulness = self._normalize_carefulness(config.get("carefulness", "high"))
         request.model_path = "" if task == "task1" else str(config.get("model_path", "")).strip()
+        request.object_row_range = 1
         future = self._start_navigation_client.call_async(request)
 
         def finish(done_future: Any) -> None:
